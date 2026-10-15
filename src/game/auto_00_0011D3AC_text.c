@@ -1,4 +1,7 @@
 #include "game/auto_00_0011D3AC_text.h"
+#ifdef PORT_LP64
+MinigameAssetPtrs g_port_mgAssets;
+#endif
 #include "main/SpaniDesc.h"
 #include "game/UnknownHomes_Game.h"
 #include "static/UnknownHomes_Static.h"
@@ -56,18 +59,18 @@ void fn_3_11D3AC(void) {
     for (i = 0; i < 81; i++) {
         lbl_8036E548.data.ptr[i] = (u8*)file + file[i];
     }
-    lbl_3_common_bss_32724.model = (u8*)file + file[i++];
-    lbl_3_common_bss_32724.anim.set = (void*)((u8*)file + file[i++]);
-    lbl_3_common_bss_32724.skin = (u8*)file + file[i++];
-    lbl_3_common_bss_32724.animBanks[0] = (ANIMBank*)((u8*)file + file[i++]);
-    ANIMGet(lbl_3_common_bss_32724.animBanks[0]);
-    lbl_3_common_bss_32724.animBanks[1] = (ANIMBank*)((u8*)file + file[i++]);
-    ANIMGet(lbl_3_common_bss_32724.animBanks[1]);
-    lbl_3_common_bss_32724.animBanks[2] = (ANIMBank*)((u8*)file + file[i++]);
-    ANIMGet(lbl_3_common_bss_32724.animBanks[2]);
-    lbl_3_common_bss_32724.textures[0] = (u8*)file + file[i++];
-    lbl_3_common_bss_32724.textures[1] = (u8*)file + file[i++];
-    lbl_3_common_bss_32724.textures[2] = (u8*)file + file[i++];
+    MG_ASSETS.model = (u8*)file + file[i++];
+    MG_ASSETS.anim.set = (void*)((u8*)file + file[i++]);
+    MG_ASSETS.skin = (u8*)file + file[i++];
+    MG_ASSETS.animBanks[0] = (ANIMBank*)((u8*)file + file[i++]);
+    ANIMGet(MG_ASSETS.animBanks[0]);
+    MG_ASSETS.animBanks[1] = (ANIMBank*)((u8*)file + file[i++]);
+    ANIMGet(MG_ASSETS.animBanks[1]);
+    MG_ASSETS.animBanks[2] = (ANIMBank*)((u8*)file + file[i++]);
+    ANIMGet(MG_ASSETS.animBanks[2]);
+    MG_ASSETS.textures[0] = (u8*)file + file[i++];
+    MG_ASSETS.textures[1] = (u8*)file + file[i++];
+    MG_ASSETS.textures[2] = (u8*)file + file[i++];
 
     for (k = 0; k < 27; k++) {
         void* layout = lbl_8036E548.data.actor[k].layout;
@@ -76,7 +79,7 @@ void fn_3_11D3AC(void) {
 
         LoadActorLayout(layout);
         if (k == 17) {
-            convertGeometryAndSknHeader(geometry, lbl_3_common_bss_32724.skin);
+            convertGeometryAndSknHeader(geometry, MG_ASSETS.skin);
         } else {
             convertGeometryAndSknHeader(geometry, NULL);
         }
@@ -86,15 +89,15 @@ void fn_3_11D3AC(void) {
     }
 
     skip = 0;
-    fn_80025DDC(lbl_3_common_bss_32724.model);
-    fn_80025FFC(lbl_3_common_bss_32724.model, &lbl_3_common_bss_32724.anim);
-    fn_80025EEC(&lbl_3_common_bss_32724.anim, 0, 0);
+    fn_80025DDC(MG_ASSETS.model);
+    fn_80025FFC(MG_ASSETS.model, &MG_ASSETS.anim);
+    fn_80025EEC(&MG_ASSETS.anim, 0, 0);
     if (skip == 0) {
-        lbl_3_common_bss_32724.anim.state.loops = 1;
+        MG_ASSETS.anim.state.loops = 1;
     }
-    convertTextureHeader(lbl_3_common_bss_32724.textures[0]);
-    convertTextureHeader(lbl_3_common_bss_32724.textures[1]);
-    convertTextureHeader(lbl_3_common_bss_32724.textures[2]);
+    convertTextureHeader(MG_ASSETS.textures[0]);
+    convertTextureHeader(MG_ASSETS.textures[1]);
+    convertTextureHeader(MG_ASSETS.textures[2]);
 }
 #endif
 
@@ -321,7 +324,11 @@ u16 fn_3_11DDC4(u8* data, u32 len) {
 // .text:0x0011DE80 size:0x4C mapped:0x8075CF14
 void fn_3_11DE80(void) {
     if (g_GameLogic._125 == 0) {
+#ifdef TARGET_PC
+        PTR32_SET(MG11D3->rouletteTask, fn_800B0A5C_insertQueue(fn_3_11DECC, 2));
+#else
         MG11D3->rouletteTask = fn_800B0A5C_insertQueue(fn_3_11DECC, 2);
+#endif
     }
 }
 
@@ -341,7 +348,7 @@ void fn_3_11DECC(void) {
             sndFXCtrl(task->sfx, 7, 0);
             task->sfx = 0xFFFFFFFF;
         }
-        MG11D3->rouletteTask = NULL;
+        MG11D3->rouletteTask = 0;
         fn_80034CEC(t);
         REMOVE_QUEUE_NOARG();
         return;

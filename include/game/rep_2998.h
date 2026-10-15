@@ -26,6 +26,7 @@ typedef struct PiranhaSpot {
 
 // One 0xE8-byte entry of lbl_3_common_bss_350E4.objs (stadium object).
 typedef struct PiranhaPlant {
+    STADIUM_OBJ_BEGIN
     /*0x00*/ GameControl ctrl;
     /*0x44*/ u8 _44[0x74 - 0x44];
     /*0x74*/ ActorObject* actorObj;
@@ -33,8 +34,13 @@ typedef struct PiranhaPlant {
     /*0x7C*/ void (*update)(struct PiranhaPlant* p);
     /*0x80*/ void (*onHit)(s32 idx, s32 hitType, struct _CollisionStruct* hit); // called by processStadiumObjectFunction
     /*0x84*/ void (*preDraw)(struct PiranhaPlant* p);
+#ifdef PORT_LP64
+    /*0x88*/ void* _88; // header pointers (StadiumObj postDraw, shapeAnim)
+    /*0x8C*/ void* _8C;
+#else
     /*0x88*/ u8 _88[4];
     /*0x8C*/ s32 _8C;
+#endif
 #ifdef TARGET_PC // bitfields in MWCC (big-endian) bit order
     /*0x90*/ u8 bits : 5;
     /*0x90*/ u8 bit5 : 1;
@@ -75,7 +81,8 @@ typedef struct PiranhaPlant {
     /*0xCA*/ u8 holdingBall;
     /*0xCB*/ s8 anim;               // index into the animation bank table
     /*0xCC*/ u8 _CC[0xE8 - 0xCC];
-} PiranhaPlant; // size: 0xE8
+    STADIUM_OBJ_END
+} PiranhaPlant; // size: 0xE8 (PC: STADIUM_OBJ_SIZE)
 
 // lbl_3_common_bss_350E4: the stadium object list.
 #ifdef PORT_LP64 // offsets for 64-bit pointers (wasm32 uses the GameCube layout)

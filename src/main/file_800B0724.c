@@ -329,6 +329,24 @@ void RunDrawScripts_with_stack_variables(void) {
         }
     }
 #endif
+#ifdef TARGET_PC
+    {
+        extern int port_spani_trace_on(void);
+        extern void port_spani_flag_snapshot(void);
+        extern void port_spani_flag_check(void* func);
+        if (port_spani_trace_on()) {
+            port_spani_flag_snapshot();
+            do {
+                void* fn = (void*)task->func;
+                lbl_803CC1B8 = task;
+                CALL_DRAW_SCRIPT(task->func, listScratch);
+                port_spani_flag_check(fn);
+                task = task->next;
+            } while (task != NULL);
+            return;
+        }
+    }
+#endif
     do {
         lbl_803CC1B8 = task;
         CALL_DRAW_SCRIPT(task->func, listScratch);
@@ -413,13 +431,30 @@ static inline void SpriteReserve(s32 size) {
     }
 }
 
+#ifdef TARGET_PC
+// MSSB_SPRITE_ZTEST=0 (test switch): sprites keep writing depth but never fail the depth test, to tell
+// whether a flicker comes from sprites depth-testing against each other / the depth-reset quad.
+static u32 port_sprite_zmode(u32 v) {
+    static int s_noTest = -1;
+    if (s_noTest < 0) {
+        extern char* getenv(const char*);
+        const char* e = getenv("MSSB_SPRITE_ZTEST");
+        s_noTest = (e != NULL && e[0] == '0');
+    }
+    return s_noTest ? (v | 0xE) : v; // compare func bits 1-3 -> GX_ALWAYS
+}
+#define PORT_SPRITE_ZMODE(v) port_sprite_zmode(v)
+#else
+#define PORT_SPRITE_ZMODE(v) (v)
+#endif
+
 // Writes the BP Z-mode command; returns whether the committed Z mode changed.
 static inline BOOL SpriteSyncZMode(void) {
     if (lbl_803CBB38->zMode != lbl_803CBB34->zMode) {
         lbl_803CBB38->zMode = lbl_803CBB34->zMode;
         SpriteReserve(5);
         *lbl_803CC1C0->pDisplayListData = 0x61;
-        *(u32*)(lbl_803CC1C0->pDisplayListData + 1) = lbl_803CBB38->zMode;
+        *(u32*)(lbl_803CC1C0->pDisplayListData + 1) = PORT_SPRITE_ZMODE(lbl_803CBB38->zMode);
         DL_BE32((lbl_803CC1C0->pDisplayListData + 1));
         lbl_803CC1C0->pDisplayListData += 5;
         return TRUE;
@@ -742,7 +777,7 @@ void DrawSprite(s32 prim, QuadVtx* verts, s32 count, TexImage* tex, u16 width, u
                 lbl_803CBB38->zMode = 0x40000013;
                 SpriteReserve(5);
                 *lbl_803CC1C0->pDisplayListData = 0x61;
-                *(u32*)(lbl_803CC1C0->pDisplayListData + 1) = 0x40000013;
+                *(u32*)(lbl_803CC1C0->pDisplayListData + 1) = PORT_SPRITE_ZMODE(0x40000013);
                 DL_BE32((lbl_803CC1C0->pDisplayListData + 1));
                 lbl_803CC1C0->pDisplayListData += 5;
             }
@@ -755,7 +790,7 @@ void DrawSprite(s32 prim, QuadVtx* verts, s32 count, TexImage* tex, u16 width, u
                 lbl_803CBB38->zMode = lbl_803CBB34->zMode;
                 SpriteReserve(5);
                 *lbl_803CC1C0->pDisplayListData = 0x61;
-                *(u32*)(lbl_803CC1C0->pDisplayListData + 1) = lbl_803CBB34->zMode;
+                *(u32*)(lbl_803CC1C0->pDisplayListData + 1) = PORT_SPRITE_ZMODE(lbl_803CBB34->zMode);
                 DL_BE32((lbl_803CC1C0->pDisplayListData + 1));
                 lbl_803CC1C0->pDisplayListData += 5;
             }
@@ -938,8 +973,36 @@ void fn_800B21A8(s32 mode) {
 
 // .text:0x800B2240 size:0x294
 // SpriteDrawCmd callback: sets up GX for sprites and runs a layer's display list.
+#ifdef TARGET_PC
+extern int port_spani_trace_on(void);
+extern int port_spani_trace_budget(void);
+extern u32 port_spani_trace_frame;
+// Draw-thread side of MSSB_SPANI_TRACE: what each sprite layer node actually hands the renderer.
+static void port_trace_sprite_draw(SpriteDrawCmd* cmd, GDCurrentDL* dl) {
+    static s32 s_prev[2][SPRITE_MAX_LAYERS];
+    s32 idx = (s32)(cmd - &lbl_80111340[0][0]);
+    s32 len = (s32)(dl->pDisplayListData - dl->begin);
+    if (idx < 0 || idx >= 2 * SPRITE_MAX_LAYERS) {
+        return;
+    }
+    {
+        s32 prev = s_prev[idx / SPRITE_MAX_LAYERS][idx % SPRITE_MAX_LAYERS];
+        if (((len == 0) != (prev == 0) || (prev > 256 && len < prev / 2) || (len > 256 && prev < len / 2)) &&
+            port_spani_trace_budget()) {
+            OSReport("[sdraw] f=%u buf %d layer %d bytes %d -> %d\n", port_spani_trace_frame,
+                     (int)(idx / SPRITE_MAX_LAYERS), (int)(idx % SPRITE_MAX_LAYERS), (int)prev, (int)len);
+        }
+        s_prev[idx / SPRITE_MAX_LAYERS][idx % SPRITE_MAX_LAYERS] = len;
+    }
+}
+#endif
 void fn_800B2240(SpriteDrawCmd* cmd) {
     GDCurrentDL* dl = cmd->dl;
+#ifdef TARGET_PC
+    if (port_spani_trace_on()) {
+        port_trace_sprite_draw(cmd, dl);
+    }
+#endif
     GXColor fogColor;
     GXTexObj texObj;
     Mtx mtx;
@@ -974,7 +1037,13 @@ void fn_800B2240(SpriteDrawCmd* cmd) {
     GXSetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_FALSE, GX_TEVPREV);
     GXSetNumIndStages(0);
     GXSetTevDirect(GX_TEVSTAGE0);
+#ifdef TARGET_PC
+    // On the GameCube this ran right after fn_800B251C left lbl_803CBB40 at layer 0; on PC the main
+    // thread may already be moving it between layers, so use layer 0's default projection directly.
+    GXSetProjectionv(&lbl_802FE918[0].type);
+#else
     GXSetProjectionv(&lbl_803CBB40->type);
+#endif
     PSMTXIdentity(mtx);
     GXLoadPosMtxImm(mtx, GX_PNMTX0);
     GXSetCurrentMtx(GX_PNMTX0);
@@ -993,6 +1062,52 @@ void fn_800B24D4(s32 layer) {
     lbl_803CC1C0 = &lbl_803CC1E4[layer];
 }
 
+#ifdef TARGET_PC
+#include <stdlib.h>
+// MSSB_SPANI_TRACE=1: log when 2D sprites stop/start producing draw data (flicker hunt).
+u32 port_spani_trace_frame;
+int port_spani_trace_on(void) {
+    static int s_on = -1;
+    if (s_on < 0) {
+        const char* e = getenv("MSSB_SPANI_TRACE");
+        s_on = (e != NULL && e[0] != '\0' && e[0] != '0');
+    }
+    return s_on;
+}
+int port_spani_trace_budget(void) {
+    static int s_lines = 0;
+    return s_lines++ < 30000;
+}
+// Bytes written so far this frame into all sprite layer display lists.
+u32 port_sprite_total_bytes(void) {
+    u32 total = 0;
+    s32 i;
+    if (lbl_803CC1E4 == NULL) {
+        return 0;
+    }
+    for (i = 0; i < lbl_803CBB30; i++) {
+        total += (u32)(lbl_803CC1E4[i].pDisplayListData - lbl_803CC1E4[i].begin);
+    }
+    return total;
+}
+static void port_trace_layers(void) {
+    static s32 s_prev[SPRITE_MAX_LAYERS];
+    s32 i;
+    for (i = 0; i < lbl_803CBB30 && i < SPRITE_MAX_LAYERS; i++) {
+        s32 len = (s32)(lbl_803CC1E4[i].pDisplayListData - lbl_803CC1E4[i].begin);
+        s32 cap = (s32)(lbl_803CC1E4[i].end - lbl_803CC1E4[i].begin);
+        s32 prev = s_prev[i];
+        // Log empty<->non-empty changes and big drops (>50%).
+        if (((len == 0) != (prev == 0) || (prev > 256 && len < prev / 2) || (len > 256 && prev < len / 2)) &&
+            port_spani_trace_budget()) {
+            OSReport("[spani] f=%u layer %d (id %d) bytes %d -> %d (cap %d)\n", port_spani_trace_frame, (int)i,
+                     (int)lbl_802FE8B8.layerIds[i], (int)prev, (int)len, (int)cap);
+        }
+        s_prev[i] = len;
+    }
+}
+#endif
+
 // .text:0x800B251C size:0x288
 // NONMATCHING 91%: the original addresses the SpriteWork arrays from a pooled base (base+0x340, then +n*0x90);
 // ours folds the offsets, plus small scheduling differences
@@ -1010,6 +1125,12 @@ void fn_800B251C(void) {
     if (lbl_803CC1C0 == NULL) {
         return;
     }
+#ifdef TARGET_PC
+    port_spani_trace_frame++; // also numbers MSSB_FRAME_DUMP captures
+    if (port_spani_trace_on()) {
+        port_trace_layers();
+    }
+#endif
     layerId = &work->layerIds[0];
     i = 0;
     lbl_803CC1C0 = lbl_803CC1E4;
@@ -1022,7 +1143,22 @@ void fn_800B251C(void) {
                 lbl_803CC1C0->pDisplayListData++;
             }
             DCStoreRangeNoSync(lbl_803CC1C0->begin, len);
+#ifdef TARGET_PC
+            {
+                // The draw thread runs this node during the NEXT frame's update, concurrently with
+                // the main thread. On the GameCube it always finished before this function's reset
+                // of that buffer (below, one frame later); on PC it can lag (texture uploads, shader
+                // compiles), and then read a zero length / moved begin and drop the whole layer.
+                // Hand it a snapshot of begin/length taken now; the bytes themselves are not
+                // rewritten until the main loop has waited for the draw pass.
+                static GDCurrentDL s_dlSnap[2][SPRITE_MAX_LAYERS];
+                GDCurrentDL* snap = &s_dlSnap[lbl_803CC1C4][i];
+                *snap = *lbl_803CC1C0;
+                lbl_80111340[lbl_803CC1C4][i].dl = snap;
+            }
+#else
             lbl_80111340[lbl_803CC1C4][i].dl = lbl_803CC1C0;
+#endif
             lbl_80111340[lbl_803CC1C4][i].draw = fn_800B2240;
             fn_800A7D4C(*layerId, (DrawNode*)&lbl_80111340[lbl_803CC1C4][i]);
         }
@@ -1329,11 +1465,22 @@ Mtx44 lbl_801115B0 = {
     {0.0f, 0.0f, -5.9604645e-08f, -1.0f},
     {0.0f, 0.0f, 0.0f, 1.0f},
 };
+#ifdef TARGET_PC
+// The depth-reset quad must write the far-plane depth exactly, as on the GameCube (24-bit 0xFFFFFF):
+// sprites drawn after it with LEQUAL can sit exactly on the far plane (GX z_ndc = 0). aurora uses
+// reversed Z (depth = -z_ndc, LEQUAL -> GreaterEqual), so the original -16777215 (z_ndc = -2^-24)
+// stores depth 2^-24 and a far-plane sprite (depth 0) fails 0 >= 2^-24: it blinks out while its entry
+// animation requests the reset (team logos, minigame panels). -2^24, exact with the 2^-24 scale in
+// lbl_801115B0, gives z_ndc = 0 -> depth 0 -> the test passes, as on hardware.
+#define SPRITE_ZRESET_Z -16777216.0f
+#else
+#define SPRITE_ZRESET_Z -16777215.0f
+#endif
 QuadVtx lbl_801115F0[4] = {
-    {{0.0f, 0.0f, -16777215.0f}, 0, 0, 0},
-    {{0.0f, 448.0f, -16777215.0f}, 0, 0, 1},
-    {{640.0f, 448.0f, -16777215.0f}, 0, 1, 1},
-    {{640.0f, 0.0f, -16777215.0f}, 0, 1, 0},
+    {{0.0f, 0.0f, SPRITE_ZRESET_Z}, 0, 0, 0},
+    {{0.0f, 448.0f, SPRITE_ZRESET_Z}, 0, 0, 1},
+    {{640.0f, 448.0f, SPRITE_ZRESET_Z}, 0, 1, 1},
+    {{640.0f, 0.0f, SPRITE_ZRESET_Z}, 0, 1, 0},
 };
 
 // .bss 0x802FE8A0..0x803009F8 (MWCC lays these out in reverse definition order)

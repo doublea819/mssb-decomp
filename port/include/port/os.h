@@ -22,8 +22,15 @@ void port_audio_pump(void);
 // Web builds: let the browser's event loop run (JSPI suspend).
 void port_yield_to_browser(void);
 
-// Ends the current frame, presents it, pumps window events and begins the next.
+// One VI retrace: runs the retrace callbacks and, if the game finished its
+// frame (port_vi_frame_done) since the last present, ends aurora's frame,
+// presents it, pumps window events and begins the next (vi_frame.cpp).
 void port_present_frame(void);
+// The game finished drawing a frame (fn_800A7DB0, before its retrace wait).
+void port_vi_frame_done(void);
+// The draw thread finished a pass: wait for aurora to consume its draws
+// (MSSB_ASYNC_DRAW=1: don't).
+void port_draw_pass_done(void);
 
 // Ask the app to exit at the next frame boundary.
 void port_request_quit(void);

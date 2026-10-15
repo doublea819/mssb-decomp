@@ -852,6 +852,25 @@ s32 fn_8000D164(u32* time, Anim* anim, s32 trackIdx, Mtx mtx, s32 flags, u32 col
 s32 fn_8000D838(u32* time, Anim* anim, s32 trackIdx, Mtx mtx, s32 flags, u32 color, u16** outLoop, SpriteBank* bank) {
     s16 path[60];
 
+#ifdef TARGET_PC
+    {
+        // Guard (PC): an out-of-range track index or a stale animation reads junk offsets and
+        // crashes (seen in Bob-omb Derby after home-run streaks). Skip the sprite for this frame
+        // and report what was asked for, so the cause can be traced.
+        AnimTrackTable* tbl = anim != NULL ? PTR32_GET(AnimTrackTable, anim->table) : NULL;
+        u32 ntracks = tbl != NULL ? *(u32*)tbl : 0;
+        if (tbl == NULL || trackIdx < 0 || (u32)trackIdx >= ntracks || ntracks > 0x400) {
+            static int s_reports;
+            if (s_reports < 20) {
+                s_reports++;
+                OSReport("[port] spani: bad track %d (of %u) in anim %p\n", (int)trackIdx,
+                         ntracks, (void*)anim);
+            }
+            *outLoop = NULL;
+            return 0;
+        }
+    }
+#endif
     if (anim->unk6 == 0) {
         return fn_8000D164(time, anim, trackIdx, mtx, flags, color, outLoop, bank);
     }
@@ -1280,6 +1299,45 @@ void fn_8000E7BC(SpriteElem* elem, Mtx mtx, SpriteDrawParams* params, s32 perCor
     }
 }
 
+#ifdef TARGET_PC
+#include "main/file_80034F50.h"
+// MSSB_SPANI_TRACE: log each distinct (bank, texture index) a sprite draws, once, with its size/format
+// and the sprite object that drew it (to identify which object/bank a given image comes from).
+static void port_trace_tex_use(SpriteBank* bank, s32 texIdx, TexImage* tex) {
+    extern int port_spani_trace_on(void);
+    extern u32 port_spani_trace_frame;
+    extern void OSReport(const char*, ...);
+    extern SpaniObj lbl_8039C3E0[];
+    extern SpaniObj* lbl_803CBC9C;
+    static struct { void* bank; s32 idx; } s_seen[1024];
+    static s32 s_n;
+    s32 i;
+    if (!port_spani_trace_on()) {
+        return;
+    }
+    for (i = 0; i < s_n; i++) {
+        if (s_seen[i].bank == bank && s_seen[i].idx == texIdx) {
+            return;
+        }
+    }
+    if (s_n < 1024) {
+        s_seen[s_n].bank = bank;
+        s_seen[s_n].idx = texIdx;
+        s_n++;
+    }
+    {
+        SpaniObj* o = lbl_803CBC9C;
+        OSReport("[texuse] f=%u bank %p tex %d %dx%d fmt %d ci %d obj %d anim %d layer %d slot %d\n",
+                 port_spani_trace_frame, (void*)bank, (int)texIdx, (int)tex->width, (int)tex->height,
+                 (int)tex->format, tex->tlut != 0, o ? (int)(o - lbl_8039C3E0) : -1,
+                 o ? (int)o->animId : -1, o ? (int)o->layer : -1, o ? (int)o->texSlot : -1);
+    }
+}
+#define PORT_TRACE_TEX_USE(b, i, t) port_trace_tex_use((b), (i), (t))
+#else
+#define PORT_TRACE_TEX_USE(b, i, t)
+#endif
+
 // .text:0x8000E900 size:0x30C
 void SetSpriteRect(SpriteRectElem* elem, SpriteBank* bank, Mtx mtx, SpriteDrawParams* params, s32 perCorner) {
     SpriteQuad q;
@@ -1289,6 +1347,7 @@ void SetSpriteRect(SpriteRectElem* elem, SpriteBank* bank, Mtx mtx, SpriteDrawPa
 
     tex = TEX_ARCHIVE_IMG(bank, elem->texIdx);
     lbl_803CBBD8 = tex;
+    PORT_TRACE_TEX_USE(bank, elem->texIdx, tex);
     q.xy[0][0] = x;
     q.xy[0][1] = y;
     q.xy[1][0] = x + tex->width;
@@ -1333,6 +1392,7 @@ void fn_8000EC0C(SpriteElem* elem, SpriteBank* bank, Mtx mtx, SpriteDrawParams* 
 
     tex = TEX_ARCHIVE_IMG(bank, elem->texIdx);
     lbl_803CBBD8 = tex;
+    PORT_TRACE_TEX_USE(bank, elem->texIdx, tex);
     q.xy[0][0] = x;
     q.xy[0][1] = y;
     q.xy[1][0] = x + tex->width;

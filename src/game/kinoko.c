@@ -195,12 +195,28 @@ extern void* fn_800B0A5C_insertQueue(void*, s32);
 
 // .text:0x0016C394 size:0x7C
 void fn_3_16C394(s8 a) {
+#ifdef TARGET_PC
+    // A second mushroom while the ribbon task is still running would add a second fn_3_16A07C
+    // task; both link the same draw node (lbl_3_data_2A320[parity]) each frame, which makes the
+    // draw list point at itself and the draw thread loop forever (Chain Chomp freeze + FIFO
+    // overflow). Restart the effect on the running task instead.
+    s32 running = lbl_3_data_28928.enabled != 0;
+#endif
     memset(&lbl_3_data_28928, 0, sizeof(lbl_3_data_28928));
+    #ifdef TARGET_PC
+    memset(lbl_3_bss_BAE0, 0, 149 * sizeof(RibEnt)); // 0x1BF0 = 149 GameCube-sized (0x30) entries
+#else
     memset(lbl_3_bss_BAE0, 0, 0x1BF0);
+#endif
     lbl_3_data_28928.charId = a;
     lbl_3_data_28928.enabled = 1;
     lbl_3_data_28928.tick = 1;
     fn_3_16B884();
+#ifdef TARGET_PC
+    if (running) {
+        return;
+    }
+#endif
     fn_800B0A5C_insertQueue(fn_3_16A07C, 0);
 }
 
@@ -662,7 +678,11 @@ void fn_3_16A07C(void) {
     fn_3_169E70(KINOKO_RIBBON(4));
     fn_3_169E70(KINOKO_RIBBON(5));
     count = 0;
+    #ifdef TARGET_PC
+    memset(lbl_3_bss_BAE0, 0, 149 * sizeof(RibEnt)); // 0x1BF0 = 149 GameCube-sized (0x30) entries
+#else
     memset(lbl_3_bss_BAE0, 0, 0x1BF0);
+#endif
     fn_3_169D00_inline(KINOKO_RIBBON(0), &count);
     fn_3_169D00_inline(KINOKO_RIBBON(1), &count);
     fn_3_169D00_inline(KINOKO_RIBBON(2), &count);

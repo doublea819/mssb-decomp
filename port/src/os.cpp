@@ -68,6 +68,9 @@ struct PortThread
     // Resumes from interrupt context that arrived while the thread was still
     // running (see OSResumeThread).
     int pendingResume = 0;
+    // OSSleepThread queue this thread is waiting on (nullptr otherwise); OSWakeupThread makes such
+    // threads runnable at once so a higher-priority one preempts the waker, as on the GameCube.
+    const void* sleepQueue = nullptr;
 };
 
 std::mutex g_sched;
@@ -483,13 +486,32 @@ void OSSleepThread(OSThreadQueue* queue)
 {
     std::unique_lock lk(g_sched);
     unsigned long long start = gen(queue);
+    PortThread* pt = t_self != nullptr ? pt_of(t_self) : nullptr;
+    if (pt != nullptr)
+        pt->sleepQueue = queue;
     block_until(lk, [&] { return gen(queue) != start; });
+    if (pt != nullptr)
+        pt->sleepQueue = nullptr;
 }
 
 void OSWakeupThread(OSThreadQueue* queue)
 {
     std::unique_lock lk(g_sched);
     wake(queue);
+    // The sleepers are runnable from now on. Without this they only counted as ready once their host
+    // thread got around to re-checking, so a woken higher-priority thread never preempted the waker:
+    // the draw thread (priority 12) then ran whenever the main thread next blocked, e.g. in the middle
+    // of building the next frame's draw list while a character model loads (half-drawn frames: the
+    // character select's banner/grid/bottom bar flickered out on alternate frames).
+    for (auto& [t, pt] : g_threads)
+    {
+        if (pt->sleepQueue == queue && pt->blocked)
+        {
+            pt->sleepQueue = nullptr;
+            pt->blocked = false;
+            t->state = OS_THREAD_STATE_READY;
+        }
+    }
     maybe_preempt(lk);
 }
 

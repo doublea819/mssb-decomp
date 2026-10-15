@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+extern void port_trace_value(const char* tag, int value);
+#define MGTRACE(tag, v) port_trace_value(tag, (int)(v))
+#else
+#define MGTRACE(tag, v) ((void)0)
+#endif
 #include "game/rep_1200.h"
 #define REP_HEADER_FN repHeader_1200
 #include "header_rep_inline.h"
@@ -1249,6 +1255,7 @@ void fn_3_7310C(void) {
         if (g_Minigame.bB_pitchesRemainingInTurn != 0) {
             g_Minigame.bB_pitchesRemainingInTurn -= 1;
         }
+        MGTRACE("mg.pitchReleased#", g_Minigame.miniGameTurnCounter);
     }
     player = 0;
     if (g_Minigame.GameMode_MiniGame == 1 || g_Minigame.GameMode_MiniGame == 3 ||

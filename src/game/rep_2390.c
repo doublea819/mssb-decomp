@@ -27,15 +27,41 @@ static ParticleParams5 lbl_3_data_17DC0[12] = {
     {NULL, 4, 3, 45000, 50000, 10000, 20, 10, 103000, 105999, 0, 60, 10000000, 18000000, 1000000, -1000000, 0x3C3C3C00, 0, 0, 0},
 };
 // Trail parameters (ParticleParams8 with 8 texture indices), one per ball state.
+#ifdef PORT_LP64
+// ParticleParams8 is 8-byte aligned on LP64 (tex pointer), so it has 4 bytes
+// of tail padding after texIndex2[0] (0x28): a wrapper's extra indices would
+// start at 0x30 while fn_8002F5F4 reads texIndex2[1..7] from 0x2C. Spell the
+// whole parameter block out with the 8 indices contiguous (same prefix).
+typedef struct {
+    TexArchive* tex;
+    s32 texIndex;
+    s32 count;
+    s32 taper;
+    s32 sizeMax;
+    s32 sizeMin;
+    s32 length;
+    s32 offset;
+    u32 gray;
+    s32 texIndex2[8];
+} ParticleParams8x8;
+#define P8X8_PARAMS(f) ((ParticleParams8*)(f))
+static ParticleParams8x8 lbl_3_data_18180[3] = {
+    {NULL, 20, 8, 7, 250000, 50000, 550000, 0, 0, {12, 13, 14, 15, 16, 17, 18, 19}},
+    {NULL, 20, 8, 7, 250000, 50000, 550000, 0, 0, {12, 13, 14, 15, 16, 17, 18, 19}},
+    {NULL, 20, 8, 7, 300000, 100000, 550000, 0, 0, {12, 13, 14, 15, 16, 17, 18, 19}},
+};
+#else
 typedef struct {
     ParticleParams8 p;
     s32 texIndex2[7];
 } ParticleParams8x8;
+#define P8X8_PARAMS(f) (&(f)->p)
 static ParticleParams8x8 lbl_3_data_18180[3] = {
     {{NULL, 20, 8, 7, 250000, 50000, 550000, 0, 0, {12}}, {13, 14, 15, 16, 17, 18, 19}},
     {{NULL, 20, 8, 7, 250000, 50000, 550000, 0, 0, {12}}, {13, 14, 15, 16, 17, 18, 19}},
     {{NULL, 20, 8, 7, 300000, 100000, 550000, 0, 0, {12}}, {13, 14, 15, 16, 17, 18, 19}},
 };
+#endif
 static Vec lbl_3_data_1824C = {0.0f, 0.0f, 1.0f};  // emit direction
 static Vec lbl_3_data_18258 = {0.0f, 0.0f, -0.2f}; // offset from the animation point
 // lbl_3_data_18264: 4 zero bytes (padding)
@@ -113,7 +139,7 @@ void fn_3_CB538(s32 mode) {
         e[2].tex = v;
         e[1].tex = v;
         f = &lbl_3_data_18180[k];
-        f->p.tex = v;
+        P8X8_PARAMS(f)->tex = v;
         e[0].tex = v;
         if (mode == 2) {
             e[0].texIndex = 0x1B;
@@ -122,7 +148,7 @@ void fn_3_CB538(s32 mode) {
             e[0].texIndex = 0x15;
             e[1].texIndex = 7;
         }
-        fn_8002F5F4(p31, &d, &f->p);
+        fn_8002F5F4(p31, &d, P8X8_PARAMS(f));
         if (lbl_80366158._28 == 0) {
             r28 = e + 1;
             j = 1;

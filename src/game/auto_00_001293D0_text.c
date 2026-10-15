@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+extern u8 g_port_selLoading[4]; // auto_00_00106DFC_text.c
+#define SEL_SHOWN(i) (g_Minigame._19E8[i]._7 != 0 || g_port_selLoading[i] != 0)
+#else
+#define SEL_SHOWN(i) (g_Minigame._19E8[i]._7 != 0)
+#endif
 #include "game/auto_00_001293D0_text.h"
 #include "game/rep_3448.h"
 #include "game/UnknownHomes_Game.h"
@@ -1285,7 +1291,11 @@ void fn_3_12D1F4(void) {
             fn_800B0A5C_insertQueue(fn_3_12C3F0, 2);
         }
         if (g_GameLogic._125 == 0) {
+#ifdef TARGET_PC
+            PTR32_SET(g_Minigame._1E04, fn_800B0A5C_insertQueue(fn_3_11DECC, 2));
+#else
             g_Minigame._1E04 = fn_800B0A5C_insertQueue(fn_3_11DECC, 2);
+#endif
         }
     } else {
         if (status == 0x22) {
@@ -1302,7 +1312,11 @@ void fn_3_12D1F4(void) {
                 if (g_Minigame._1907 == 1) {
                     fn_800B0A5C_insertQueue(fn_3_11D780, 2);
                 }
+#ifdef TARGET_PC
+                PTR32_SET(g_Minigame._1E04, fn_800B0A5C_insertQueue(fn_3_127B68, 2));
+#else
                 g_Minigame._1E04 = fn_800B0A5C_insertQueue(fn_3_127B68, 2);
+#endif
             }
             if (g_GameLogic._125 == 5 && g_GameLogic.FrameCountOfCurrentAtBat_Copy == 0) {
                 fn_800B0A5C_insertQueue(fn_3_1274B4, 2);
@@ -1365,6 +1379,13 @@ void fn_3_12A910(void) {
 
     (task = HUD_TASK)->timer++;
     task->_1A++;
+#ifdef TARGET_PC
+    {
+        extern unsigned int port_spani_trace_frame;
+        extern unsigned int g_port_frame_dump_until;
+        g_port_frame_dump_until = port_spani_trace_frame + 2; // MSSB_FRAME_DUMP: capture character select
+    }
+#endif
     if (lbl_3_common_bss_32724.hudOff != 0) {
         goto remove;
     }
@@ -1383,7 +1404,7 @@ void fn_3_12A910(void) {
     } else if (task->state == 2) {
         for (i = 0; i < 4; i++) {
             if (g_Minigame._19DA[i] >= 0) {
-                if (g_Minigame._19E8[i]._0 >= 0 && g_Minigame._19E8[i]._7 != 0) {
+                if (g_Minigame._19E8[i]._0 >= 0 && SEL_SHOWN(i)) {
                     lbl_80371C30[task->baseIdx + 9 + i].obj->_68 = 1;
                 } else if ((s32)(lbl_80371C30[task->baseIdx + 9 + i].obj->_5C >> 16) < 10) {
                     lbl_80371C30[task->baseIdx + 9 + i].obj->_68 = 1;
@@ -1494,7 +1515,7 @@ void fn_3_12A910(void) {
         } else {
             lbl_80371C30[task->baseIdx + 18 + i].obj->_68 = 4;
         }
-        if (g_Minigame._19E8[i]._0 < 0 || g_Minigame._19E8[i]._7 == 0) {
+        if (g_Minigame._19E8[i]._0 < 0 || !SEL_SHOWN(i)) {
             lbl_80371C30[task->baseIdx + 18 + i].obj->flags &= ~2;
         } else {
             lbl_80371C30[task->baseIdx + 18 + i].obj->flags |= 2;
@@ -1515,7 +1536,7 @@ void fn_3_12A910(void) {
                 show = 1;
             }
         }
-        if (show != 0 && lbl_800E8558[g_Minigame._19E8[i]._0]._0[0] != 0 && g_Minigame._19E8[i]._7 != 0) {
+        if (show != 0 && lbl_800E8558[g_Minigame._19E8[i]._0]._0[0] != 0 && SEL_SHOWN(i)) {
             lbl_80371C30[task->baseIdx + 30 + i].obj->flags |= 2;
         } else {
             lbl_80371C30[task->baseIdx + 30 + i].obj->flags &= ~2;
@@ -1539,7 +1560,7 @@ void fn_3_12A910(void) {
             ((g_d_GameSettings.exhibitionMatchInd != 0 && lbl_80361B20.unlocked[g_Minigame._19E8[i]._0] != 0) ||
              (g_d_GameSettings.exhibitionMatchInd == 0 &&
               gChallengeState._43D6[g_Minigame._19E8[i]._0] != 0)) &&
-            g_Minigame._19E8[i]._7 != 0) {
+            SEL_SHOWN(i)) {
             lbl_80371C30[task->baseIdx + 34 + i].obj->flags |= 2;
             lbl_80371C30[task->baseIdx + 34 + i].obj->_68 = 1;
             lbl_80371C30[task->baseIdx + 38 + i].obj->_68 = 1;
@@ -1565,7 +1586,7 @@ void fn_3_12A910(void) {
 
     // Character portrait and stats.
     for (i = 0; i < 4; i++) {
-        if (g_Minigame._19DA[i] >= 0 && (charId = g_Minigame._19E8[i]._0) >= 0 && g_Minigame._19E8[i]._7 != 0) {
+        if (g_Minigame._19DA[i] >= 0 && (charId = g_Minigame._19E8[i]._0) >= 0 && SEL_SHOWN(i)) {
             if (charId != (lbl_80371C30[task->baseIdx + 62 + i].obj->_5C >> 16)) {
                 lbl_80371C30[task->baseIdx + 42 + i].obj->_5C = 0;
                 lbl_80371C30[task->baseIdx + 46 + i].obj->_5C = 0;

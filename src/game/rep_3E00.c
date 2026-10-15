@@ -5,7 +5,16 @@
 #include "main/file_80024D2C.h" // ShapeData, ShapeAnimPlayer
 #include "main/file_800BD8C4.h" // ActorObjectInitTable
 
+#ifdef PORT_LP64
+// GameCube: this work area is lbl_3_common_bss_32724 0x00-0x60, below the HUD flags (0x96+).
+// 64-bit it is 0xA8 bytes and would run over them, so it gets its own storage (nothing else
+// reads it as TrailShapeWork).
+static TrailShapeWork sTrailShapeWork;
+#define TRAIL_WORK sTrailShapeWork
+#else
 extern TrailShapeWork lbl_3_common_bss_32724;
+#define TRAIL_WORK lbl_3_common_bss_32724
+#endif
 extern void LoadActorLayout(void*);
 extern void convertGeometryAndSknHeader(void* geo, void* skn);
 extern void haveActLayoutPointToGeoHeader(void*, void*);
@@ -32,7 +41,7 @@ extern f32 lbl_3_rodata_3E50;
 #pragma opt_propagation off
 void fn_3_166448(void) {
     void* b;
-    TrailShapeWork* bss = &lbl_3_common_bss_32724;
+    TrailShapeWork* bss = &TRAIL_WORK;
     void* a;
     void* c;
     u8* hdr = (u8*)lbl_8036E548.trailFile; // file of 32-bit offsets from its own start
@@ -67,12 +76,17 @@ void fn_3_166448(void) {
     {
     int cnt = 1;
     lbl_8036E548._3078 = cnt;
+#ifdef TARGET_PC
+    lbl_8036E548.trail2 = _OSAllocFromHeap(0x20, cnt * sizeof(CharTrail)); // 0x30 on PC
+    memset(lbl_8036E548.trail2, 0, lbl_8036E548._3078 * sizeof(CharTrail));
+#else
     lbl_8036E548.trail2 = _OSAllocFromHeap(0x20, cnt * 0x28);
     memset(lbl_8036E548.trail2, 0, lbl_8036E548._3078 * 0x28);
+#endif
     lbl_8036E548.slots68 = ActorObjectInitTable(lbl_8036E548._3078);
     }
     fn_3_11D2C8(0, 0, 1, 0, 0);
-    lbl_3_common_bss_32724.anim.state.speed = lbl_3_rodata_3E50;
-    fn_80025C58(lbl_3_common_bss_32724.shape, (ShapeModel**)&lbl_8036E548.slots68->objects[0]);
+    TRAIL_WORK.anim.state.speed = lbl_3_rodata_3E50;
+    fn_80025C58(TRAIL_WORK.shape, (ShapeModel**)&lbl_8036E548.slots68->objects[0]);
     }
 }

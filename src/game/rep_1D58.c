@@ -449,6 +449,28 @@ void fn_3_B99E4(void) {
 }
 
 // .text:0x000B98E8 size:0xFC mapped:0x806F897C
+#ifdef TARGET_PC
+// Gives every bone of the actor its own animation pipe. The GameCube code walks
+// the actor through byte-offset views (4-byte bone pointers, animPipe at 0xE8,
+// a 0x1C-byte pipe); on PC use the real structs.
+void fn_3_B98E8(void* p) {
+    GameActor* actor = ((ActorObject*)p)->actor;
+    u32 i;
+    for (i = 0; i < actor->totalBones; i++) {
+        struct ANIMPipe* pipe = _OSAllocFromHeap(0x20, sizeof(struct ANIMPipe));
+        actor->boneArray[i]->animPipe = pipe;
+        pipe->time = 0.0f;
+        pipe->prevTime = 0.0f;
+        pipe->speed = 1.0f;
+        pipe->currentTrack = NULL;
+        pipe->control = NULL;
+        pipe->keyFrameCache = 0;
+        pipe->replaceHierarchyCtrl = 0;
+        pipe->forward = 1;
+        pipe->loop = 1;
+    }
+}
+#else
 void fn_3_B98E8(void* p) {
     StadHdr** pp = (StadHdr**)p;
     f32 one;
@@ -474,6 +496,7 @@ void fn_3_B98E8(void* p) {
         e->extra->i = 0;
     }
 }
+#endif
 
 // .text:0x000B97DC size:0x10C mapped:0x806F8870
 void fn_3_B97DC(ActorObject* p, void* f) {

@@ -238,5 +238,29 @@ void fn_3_E11E0(void) {
             }
         }
     }
+#ifdef TARGET_PC
+    {
+        extern int port_spani_trace_on(void);
+        extern u32 port_spani_trace_frame;
+        extern void OSReport(const char*, ...);
+        extern u8 g_port_selLoading[4];
+        static s32 s_last[4] = {-99, -99, -99, -99};
+        if (port_spani_trace_on()) {
+            for (i = 0; i < 4; i++) {
+                CharActor* e = lbl_8036E548.active[i];
+                s32 key = ((u8)g_Minigame._19E8[i]._0) | ((u8)g_Minigame._19E8[i]._2 << 8) |
+                          ((u8)g_Minigame._19E8[i]._7 << 16) | ((g_Minigame._1A13[i] & 1) << 24) |
+                          ((e ? e->mode[0] & 3 : 3) << 25) | ((g_port_selLoading[i] & 1) << 27);
+                if (key != s_last[i]) {
+                    OSReport("[sel] f=%u player %d hover %d loaded %d pending %d _7 %d loading %d 1A13 %d mode %d\n",
+                             port_spani_trace_frame, i, (int)g_Minigame._19E8[i]._0, (int)g_Minigame._19E8[i]._2,
+                             (int)g_Minigame._19E8[i]._3, (int)g_Minigame._19E8[i]._7, (int)g_port_selLoading[i],
+                             (int)g_Minigame._1A13[i], e ? (int)e->mode[0] : -1);
+                    s_last[i] = key;
+                }
+            }
+        }
+    }
+#endif
 }
 

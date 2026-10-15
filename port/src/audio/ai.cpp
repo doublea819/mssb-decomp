@@ -16,6 +16,7 @@
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_init.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -48,8 +49,43 @@ int sample_rate_hz()
 // close to the hardware cadence.
 constexpr int kTargetQueueMs = 30;
 
+// MSSB_AI_STATS=1: once a second, DMA periods run, the longest run of periods
+// less than 1 ms apart (a burst) and the device queue level.
+void ai_stats(int queuedBytes)
+{
+    static const bool s_on = [] {
+        const char* env = getenv("MSSB_AI_STATS");
+        return env != nullptr && env[0] != '\0' && env[0] != '0';
+    }();
+    if (!s_on)
+        return;
+    using clock = std::chrono::steady_clock;
+    static clock::time_point s_window = clock::now(), s_last;
+    static int s_periods = 0, s_run = 0, s_maxRun = 0, s_minQ = 1 << 30, s_maxQ = 0;
+    const auto now = clock::now();
+    s_run = now - s_last < std::chrono::milliseconds(1) ? s_run + 1 : 1;
+    s_maxRun = std::max(s_maxRun, s_run);
+    s_last = now;
+    ++s_periods;
+    s_minQ = std::min(s_minQ, queuedBytes);
+    s_maxQ = std::max(s_maxQ, queuedBytes);
+    if (now - s_window >= std::chrono::seconds(1))
+    {
+        const int bytesPerMs = sample_rate_hz() * 4 / 1000;
+        fprintf(stderr, "[ai] %d periods/s, longest burst %d, queue %d-%d ms\n", s_periods, s_maxRun,
+                s_minQ / bytesPerMs, s_maxQ / bytesPerMs);
+        s_window = now;
+        s_periods = 0;
+        s_maxRun = 0;
+        s_minQ = 1 << 30;
+        s_maxQ = 0;
+    }
+}
+
 void run_period()
 {
+    if (s_stream != nullptr)
+        ai_stats(SDL_GetAudioStreamQueued(s_stream));
     u32 len = s_dmaLength.load();
     uintptr_t start = s_dmaStart.load();
     s_period.resize(len);
@@ -91,18 +127,80 @@ void stop_audio_thread()
         s_thread.join();
 }
 
-void audio_thread()
+// Periods are run on a wall-clock cadence (one per period length, 5 ms), not
+// whenever SDL's queue runs low: the device pulls audio in large chunks (10-20
+// ms on built-in speakers, far more on Bluetooth), so a queue-driven loop ran
+// the DMA callback in bursts of several periods back to back. Game code that
+// produces audio between interrupts can't keep up with that: the movie player
+// (MovMixAudio, file_800ADC40.c) skips every period of a burst whose audio the
+// decoder hasn't written yet, and since its clock counts only mixed periods,
+// the movie ran at ~0.36x. The queue level only trims the cadence to the
+// device's real rate. MSSB_AI_BURST=1 restores the queue-driven loop.
+// The queue is filled to kPrefillMs once (at start, or after it ran dry), then
+// topped up one period per period; it swings by one device chunk around that.
+constexpr int kPrefillMs = 40;
+constexpr int kDryMs = 3;       // below this the device is starving: refill at once
+constexpr int kMaxQueueMs = 120; // above this, hold off (device slower than the wall clock)
+
+bool dma_ready()
+{
+    return s_dmaRunning.load() && s_dmaLength.load() != 0 && s_dmaStart.load() != 0;
+}
+
+void audio_thread_burst()
 {
     while (!s_quit.load())
     {
         const int targetBytes = sample_rate_hz() * 4 * kTargetQueueMs / 1000;
-        if (s_dmaRunning.load() && s_dmaLength.load() != 0 && s_dmaStart.load() != 0 &&
-            SDL_GetAudioStreamQueued(s_stream) < targetBytes)
+        if (dma_ready() && SDL_GetAudioStreamQueued(s_stream) < targetBytes)
         {
             run_period();
             continue;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+void audio_thread()
+{
+    if (const char* env = getenv("MSSB_AI_BURST"); env != nullptr && env[0] != '\0' && env[0] != '0')
+    {
+        audio_thread_burst();
+        return;
+    }
+    using clock = std::chrono::steady_clock;
+    clock::time_point next = clock::now();
+    bool refill = true;
+    while (!s_quit.load())
+    {
+        if (!dma_ready())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            next = clock::now();
+            refill = true;
+            continue;
+        }
+        const int bytesPerMs = sample_rate_hz() * 4 / 1000;
+        const int queued = SDL_GetAudioStreamQueued(s_stream);
+        const clock::time_point now = clock::now();
+        if (queued < kDryMs * bytesPerMs)
+            refill = true;
+        else if (queued >= kPrefillMs * bytesPerMs)
+            refill = false;
+        if (refill || (now >= next && queued < kMaxQueueMs * bytesPerMs))
+        {
+            if (refill)
+                next = now; // the cadence restarts once the queue is primed
+            run_period();
+            const auto period = std::chrono::microseconds(1000000LL * (s_dmaLength.load() / 4) / sample_rate_hz());
+            next += period;
+            if (next < now - std::chrono::milliseconds(50))
+                next = now + period; // stalled (debugger, hidden app): don't burst to catch up
+            continue;
+        }
+        if (now >= next)
+            next = now; // queue full: wait for the device to drain it
+        std::this_thread::sleep_until(std::min(next, now + std::chrono::milliseconds(1)));
     }
 }
 

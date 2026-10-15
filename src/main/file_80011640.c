@@ -4949,6 +4949,31 @@ void fn_8001E488(void) {
     GXSetZMode(GX_ENABLE, GX_LEQUAL, GX_ENABLE);
     GXSetCullMode(GX_CULL_BACK);
     GXSetBlendMode(blend, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+#ifdef TARGET_PC
+    {
+        extern int port_spani_trace_on(void);
+        extern u32 port_spani_trace_frame;
+        extern void OSReport(const char*, ...);
+        static s32 s_last[4] = {-1, -1, -1, -1};
+        if (port_spani_trace_on()) {
+            for (i = 0; i < 4 && i < lbl_8036E548.slots->count; i++) {
+                s32 r;
+                actor = lbl_8036E548.active[i];
+                slot = &lbl_8036E548.slots->objects[i];
+                if (actor == NULL) r = 1;
+                else if (slot->actor == NULL) r = 2;
+                else if (slot->animateBones == 0) r = 3;
+                else r = 0;
+                if (r != s_last[i]) {
+                    OSReport("[mdl] f=%u player %d %s (kind %d mode %d alpha %d)\n", port_spani_trace_frame, (int)i,
+                             r == 0 ? "DRAWN" : r == 1 ? "no-actor" : r == 2 ? "no-model" : "animateBones=0",
+                             actor ? (int)actor->kind : -1, actor ? (int)actor->mode[0] : -1, actor ? (int)actor->_277 : -1);
+                    s_last[i] = r;
+                }
+            }
+        }
+    }
+#endif
     for (i = 0; i < lbl_8036E548.slots->count; i++) {
         actor = lbl_8036E548.active[i];
         if (actor != NULL) {
@@ -4978,7 +5003,13 @@ static inline void drawTrailObjects(void) {
             slot = &lbl_8036E548.slots68->objects[i];
             if (slot->actor != NULL && slot->animateBones != 0) {
                 if (lbl_8036E548.trail2[i].draw != NULL) {
+#ifdef TARGET_PC
+                    // The minigame callbacks (rep_3310: fn_3_1194AC, fn_3_11897C, ...) take the slot
+                    // index; on the GameCube it was already in r3 here. Pass it explicitly.
+                    ((void (*)(s32))lbl_8036E548.trail2[i].draw)(i);
+#else
                     lbl_8036E548.trail2[i].draw();
+#endif
                 }
                 fn_800BDA94(slot, fn_80052734(0)->view);
             }
@@ -5453,3 +5484,11 @@ u8 lbl_803CBBF8;
 void (*lbl_803CBBF4)(void);
 u32 lbl_803CBBF0;
 
+
+#ifdef PORT_LP64
+#include <stddef.h>
+// MinigameActorView (game/auto_00_000DEB90_text.h) hard-codes these PC offsets.
+_Static_assert(offsetof(CharActor, pos) == 0x68, "MinigameActorView.pos");
+_Static_assert(offsetof(CharActor, rot) == 0x74, "MinigameActorView._40/rotY");
+_Static_assert(offsetof(CharActor, mode) == 0x295, "MinigameActorView.visible");
+#endif

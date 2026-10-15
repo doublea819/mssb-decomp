@@ -1114,13 +1114,13 @@ void fn_3_BA538(Particle* p) {
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     for (i = 0; i < 4; i++) {
         GXPosition3f32(q[i * 3], q[i * 3 + 1], q[i * 3 + 2]);
-        GXColor1u32(p->color.rgba);
+        GXColor1u32(PCOLOR_GET(p->color));
     }
     GXSetCullMode(GX_CULL_FRONT);
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     for (i = 0; i < 4; i++) {
         GXPosition3f32(q[i * 3], q[i * 3 + 1], q[i * 3 + 2]);
-        GXColor1u32(p->colorStep.all);
+        GXColor1u32(PCOLOR_WORD(p->colorStep, all));
     }
 }
 
@@ -1845,6 +1845,23 @@ void fn_3_BD1D8(f32 (*m)[4]) {
             lbl_3_bss_996C.y = lbl_3_rodata_1EFC * -lbl_3_bss_9978[0].y;
             lbl_3_bss_996C.z = lbl_3_rodata_1E68;
             if (g_UNK_StadiumDetails.numCollisionBoxes2 != 0) {
+#ifdef TARGET_PC
+                // fn_3_8D4 takes a {src, dst} segment. The original passes &sp2C and relies on
+                // MWCC placing sp38 right after it; on PC the locals aren't laid out that way and
+                // dst was stack garbage, so the sun's occlusion test (and with it the glare and
+                // the team banners of the pre-game intro) came out at random.
+                struct { Vec src, dst; } seg;
+                memcpy(&seg.src, &fn_80052768_getCamera(0)->eye, 0xC);
+                memcpy(&seg.dst, &lbl_3_common_bss_35154.x, 0xC);
+                lbl_3_common_bss_35154.occluded = fn_3_8D4(&seg, &sp14);
+                if (lbl_3_common_bss_35154.occluded == 0) {
+                    memcpy(&seg.dst, &fn_80052768_getCamera(0)->eye, 0xC);
+                    memcpy(&seg.src, &lbl_3_common_bss_35154.x, 0xC);
+                    lbl_3_common_bss_35154.occluded = fn_3_8D4(&seg, &sp14);
+                }
+                (void)sp2C;
+                (void)sp38;
+#else
                 memcpy(&sp2C, &fn_80052768_getCamera(0)->eye, 0xC);
                 memcpy(&sp38, &lbl_3_common_bss_35154.x, 0xC);
                 lbl_3_common_bss_35154.occluded = fn_3_8D4(&sp2C, &sp14);
@@ -1853,6 +1870,7 @@ void fn_3_BD1D8(f32 (*m)[4]) {
                     memcpy(&sp2C, &lbl_3_common_bss_35154.x, 0xC);
                     lbl_3_common_bss_35154.occluded = fn_3_8D4(&sp2C, &sp14);
                 }
+#endif
             }
         }
     } else {

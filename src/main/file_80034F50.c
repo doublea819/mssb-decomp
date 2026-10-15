@@ -104,6 +104,12 @@ static inline void spaniClearSlot(s32 id) {
     }
 }
 
+#ifdef TARGET_PC
+static void* s_slotEntry[SPANI_TEX_SLOT_COUNT];
+extern int port_spani_trace_on(void);
+extern int port_spani_trace_budget(void);
+#endif
+
 // .text:0x80034F50 size:0x218
 SpaniObj* fn_80034F50(SpaniDesc* desc) {
     s32 i;
@@ -148,11 +154,70 @@ SpaniObj* fn_80034F50(SpaniDesc* desc) {
             obj->frameStep = 0x10000;
             obj->unkA8 = 0;
             PSMTXIdentity(obj->mtx);
+#ifdef TARGET_PC
+            if (port_spani_trace_on() && port_spani_trace_budget()) {
+                OSReport("[spobj] create obj %d anim %u layer %u texId %u -> slot %d (entry %p) parent %d\n", (int)i,
+                         desc->animId, desc->layer, desc->texId, (int)slot,
+                         slot < SPANI_TEX_SLOT_COUNT ? s_slotEntry[slot] : NULL, (int)desc->parent);
+            }
+#endif
             return obj;
         }
     }
     return NULL;
 }
+
+#ifdef TARGET_PC
+extern int port_spani_trace_on(void);
+extern int port_spani_trace_budget(void);
+extern u32 port_sprite_total_bytes(void);
+extern u32 port_spani_trace_frame;
+// state: 0 inactive, 1 hidden (flag 2 clear), 2 parent not ready, 3 drew nothing, 4 drew
+static u8 s_spaniTraceState[SPANI_OBJ_COUNT];
+static void spaniTrace(s32 i, SpaniObj* obj, u8 st, u32 bytes) {
+    static const char* names[] = {"inactive", "hidden", "parent-wait", "EMPTY", "drawn"};
+    u8 prev = s_spaniTraceState[i];
+    s_spaniTraceState[i] = st;
+    if (prev == st || prev == 0 || st == 0) {
+        return; // only log changes on live objects (creation/destruction is noise)
+    }
+    if (!port_spani_trace_budget()) {
+        return;
+    }
+    OSReport("[spani] f=%u obj %d anim %u layer %u slot %u frame %u.%04x res %u flags %x 3d %u scale %.3f pos %.1f,%.1f: %s -> %s (%u bytes)\n",
+             port_spani_trace_frame, (int)i, obj->animId, obj->layer, obj->texSlot, obj->frame >> 16,
+             obj->frame & 0xFFFF, obj->animResult, (unsigned)obj->flags, obj->is3D, obj->scale, obj->posX,
+             obj->posY, names[prev], names[st], bytes);
+}
+#define SPANI_TRACE(st, bytes) do { if (traceOn) spaniTrace(i, obj, (st), (bytes)); } while (0)
+#else
+#define SPANI_TRACE(st, bytes) do { } while (0)
+#endif
+
+#ifdef TARGET_PC
+// MSSB_SPANI_TRACE: name the scene task that toggles a sprite's visible bit (flags & 2).
+extern const char* port_sym_name(void* p);
+static u32 s_flagSnap[SPANI_OBJ_COUNT];
+void port_spani_flag_snapshot(void) {
+    s32 i;
+    for (i = 0; i < SPANI_OBJ_COUNT; i++) {
+        s_flagSnap[i] = lbl_8039C3E0[i].flags;
+    }
+}
+void port_spani_flag_check(void* func) {
+    s32 i;
+    for (i = 0; i < SPANI_OBJ_COUNT; i++) {
+        u32 f = lbl_8039C3E0[i].flags;
+        u32 o = s_flagSnap[i];
+        if (((f ^ o) & 2) && o != 0 && f != 0 && port_spani_trace_budget()) {
+            OSReport("[flagw] f=%u task %s obj %d anim %u layer %u flags %x -> %x\n", port_spani_trace_frame,
+                     port_sym_name(func), (int)i, lbl_8039C3E0[i].animId, lbl_8039C3E0[i].layer, (unsigned)o,
+                     (unsigned)f);
+        }
+        s_flagSnap[i] = f;
+    }
+}
+#endif
 
 // .text:0x80035168 size:0x550
 // NONMATCHING 97.5%: original keeps separate k*4 and texOverride walkers (r29/r30); regalloc
@@ -172,6 +237,10 @@ void fn_80035168(void) {
     s32 unk74;
     s32 k;
     s32 layer;
+#ifdef TARGET_PC
+    int traceOn = port_spani_trace_on();
+    u32 traceBytes = 0;
+#endif
 
     if (lbl_803C77B8[0].held & 0x1000) {
         if (lbl_803C77B8[3].trig & 1) {
@@ -193,20 +262,28 @@ void fn_80035168(void) {
     for (i = lbl_803CBC98, obj = &lbl_8039C3E0[i]; i < lbl_803CB814; i++, obj++) {
         u32 flags = obj->flags;
         if (flags == 0) {
+            SPANI_TRACE(0, 0);
             continue;
         }
         if (!(flags & 2)) {
             if (flags & 4) {
                 fn_8000F534(obj, 0);
             }
+            SPANI_TRACE(1, 0);
             continue;
         }
         if (obj->parent != NULL && obj->unkA8 == 0) {
             if (flags & 4) {
                 fn_8000F534(obj, 0);
             }
+            SPANI_TRACE(2, 0);
             continue;
         }
+#ifdef TARGET_PC
+        if (traceOn) {
+            traceBytes = port_sprite_total_bytes();
+        }
+#endif
         fn_800B24D4(obj->layer);
         if (obj->is3D) {
             fn_800B27DC(lbl_801F8640, 0);
@@ -300,6 +377,12 @@ void fn_80035168(void) {
         if (obj->flags & 4) {
             fn_8000F534(obj, 1);
         }
+#ifdef TARGET_PC
+        if (traceOn) {
+            u32 b = port_sprite_total_bytes() - traceBytes;
+            SPANI_TRACE(b != 0 ? 4 : 3, b);
+        }
+#endif
     }
     for (layer = 1; layer < 9; layer++) {
         fn_800B24D4(layer);
@@ -344,6 +427,12 @@ void fn_80035750(void* data, void* tex, s16 id) {
     s = &lbl_803C4BE0[slot];
     pa = &s->anim;
     s->data = data;
+#ifdef TARGET_PC
+    s_slotEntry[slot] = data; // a stadium/file bank, not a table entry
+    if (port_spani_trace_on()) {
+        OSReport("[bank] file bank id %d -> slot %d (data %p)\n", (int)id, (int)slot, data);
+    }
+#endif
     s->tex = tex;
     *pa = data;
     lbl_8023D6C0[slot] = id;
@@ -370,7 +459,22 @@ s32 fn_80035838(void* aramAddr, u8 id) {
             OSPanic("spani_default.c", 0x45A, "gasSpani No Empty \n");
         }
         lbl_8023D6C0[lbl_803CBC91] = id;
+#ifdef TARGET_PC
+        if (port_spani_trace_on()) {
+            s32 k, dup = -1;
+            for (k = 0; k < SPANI_TEX_SLOT_COUNT; k++) {
+                if (k != lbl_803CBC91 && lbl_8023D6C0[k] == id) {
+                    dup = k;
+                }
+            }
+            OSReport("[bank] load id %u -> slot %d (entry %p, existing slot with same id: %d)\n", id,
+                     (int)lbl_803CBC91, aramAddr, (int)dup);
+        }
+#endif
         lbl_803C4BE0[lbl_803CBC91].data = ARAMTransfer(aramAddr, 0, 0, 0);
+#ifdef TARGET_PC
+        s_slotEntry[lbl_803CBC91] = aramAddr;
+#endif
         lbl_803CBC94 = aramAddr;
         lbl_803CB810 = id;
         lbl_803CBC90++;
@@ -413,6 +517,11 @@ void fn_80035A00(void) {
 // .text:0x80035B50 size:0x154
 void fn_80035B50(int id) {
     s32 slot = spaniFindSlot(id);
+#ifdef TARGET_PC
+    if (port_spani_trace_on()) {
+        OSReport("[bank] free id %d (slot %d)\n", id, (int)slot);
+    }
+#endif
 
     if (slot != -1) {
         lbl_8023D6C0[slot] = -1;
@@ -426,6 +535,11 @@ void fn_80035B50(int id) {
 
 // .text:0x80035CA4 size:0x130
 void fn_80035CA4(s32 id) {
+#ifdef TARGET_PC
+    if (port_spani_trace_on()) {
+        OSReport("[bank] clear id %d (slot %d)\n", (int)id, (int)spaniFindSlot(id));
+    }
+#endif
     spaniClearSlot(id);
 }
 

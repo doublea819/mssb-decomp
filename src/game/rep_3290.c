@@ -1,6 +1,12 @@
 // g_Minigame stays a byte array here (the matched code's address arithmetic depends on it); MG is its
 // typed view.
 #define g_Minigame g_Minigame_header_decl
+#ifdef TARGET_PC
+extern void port_trace_value(const char* tag, int value);
+#define MGTRACE(tag, v) port_trace_value(tag, (int)(v))
+#else
+#define MGTRACE(tag, v) ((void)0)
+#endif
 #include "game/rep_3290.h"
 #undef g_Minigame
 #define REP_HEADER_FN repHeader_3290
@@ -184,6 +190,11 @@ void fn_3_1136FC(void) {
     if (((Mg3290*)g)->cpu.plan == 0 && RandomInt_Game(0x64) < (s8)lbl_3_data_216B8[d]) {
         ((Mg3290*)g)->cpu.plan = 1;
     }
+    MGTRACE("wb.difficulty", ((Mg3290*)g)->difficulty);
+    MGTRACE("wb.cpuPlayer", (s8)g[MGO(currentPlayer)]);
+    MGTRACE("wb.cpuStrength", d);
+    MGTRACE("wb.cpuAim(lo*1000+hi)", lo * 1000 + hi);
+    MGTRACE("wb.cpuPlan", ((Mg3290*)g)->cpu.plan);
 }
 
 // .text:0x0011391C size:0x34 mapped:0x807529B0

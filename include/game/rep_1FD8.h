@@ -9,6 +9,7 @@
 
 // One stadium object slot of lbl_3_common_bss_350E4 (0xE8 bytes), as set up by fn_3_C8650.
 typedef struct StadObj1FD8 {
+    STADIUM_OBJ_BEGIN
     union {
         Control ctrl;
         GameControl gctrl; // the whole 0x44-byte control (copied by fn_3_C71CC)
@@ -57,7 +58,12 @@ typedef struct StadObj1FD8 {
         } b; // group B (fn_3_C63D0)
     } x;
     u8 padC0[0xE8 - 0xC0];
-} StadObj1FD8; // size: 0xE8
+    STADIUM_OBJ_END
+} StadObj1FD8; // size: 0xE8 (PC: STADIUM_OBJ_SIZE)
+#ifdef PORT_LP64
+_Static_assert(sizeof(StadObj1FD8) == STADIUM_OBJ_SIZE, "StadObj1FD8 stride");
+_Static_assert(__builtin_offsetof(StadObj1FD8, alpha) == STADIUM_OBJ_PAD(0x92), "StadObj1FD8.alpha");
+#endif
 typedef struct {
     f32 x, y, z;
     f32 rotY;

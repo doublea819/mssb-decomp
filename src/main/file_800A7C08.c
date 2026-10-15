@@ -66,6 +66,16 @@ void* fn_800A7C08(void* arg) {
             }
             node = (DrawCallbackNode*)(next & ~3);
         }
+#ifdef TARGET_PC
+        {
+            // aurora reads vertex arrays, textures and TLUTs from game memory
+            // when its FIFO thread processes a draw, which can lag far behind
+            // (texture hashing, pipeline compiles). Finish this pass's draws
+            // before the main thread's update rewrites that memory.
+            extern void port_draw_pass_done(void);
+            port_draw_pass_done();
+        }
+#endif
         lbl_803C7420.drawing = FALSE;
         OSSignalSemaphore(&lbl_803C7420.drawDone);
     }
@@ -75,6 +85,11 @@ void* fn_800A7C08(void* arg) {
 // .text:0x800A7D4C size:0x30
 void fn_800A7D4C(s32 index, DrawCallbackNode* node) {
 #ifdef TARGET_PC
+    // Linking the node that already heads this list would point it at itself and the draw thread
+    // would loop on it forever (seen with a doubled effect task). Skip the duplicate.
+    if ((lbl_803C7420.drawList[index].raw & ~(uintptr_t)3) == (uintptr_t)node) {
+        return;
+    }
     node->next.raw = (lbl_803C7420.drawList[index].raw & ~(uintptr_t)3) | (node->next.raw & 3);
 #else
     node->next.bits.addr = lbl_803C7420.drawList[index].bits.addr;
@@ -95,6 +110,12 @@ void fn_800A7D7C(DrawLink* list, s32 count) {
 
 // .text:0x800A7DB0 size:0x50
 void fn_800A7DB0(void) {
+#ifdef TARGET_PC
+    // Both draw passes are done: the next retrace may present this frame
+    // (aurora presents the live EFB, so earlier retraces must not).
+    extern void port_vi_frame_done(void);
+    port_vi_frame_done();
+#endif
     OSSleepThread(&lbl_803C7420.retraceQueue);
     GXSetColorUpdate(GX_TRUE);
     VIFlush();

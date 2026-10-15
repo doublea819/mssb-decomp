@@ -14,6 +14,8 @@ static const char* sym_name(void* p)
     return "?";
 }
 
+const char* port_sym_name(void* p) { return sym_name(p); }
+
 // funcs: the root task's function followed by the list's (count entries).
 void port_trace_tasks(void** funcs, int count)
 {
@@ -52,7 +54,10 @@ void port_trace_draw(void** funcs, int count)
         return;
     memcpy(last, funcs, (size_t)count * sizeof(void*));
     lastCount = count;
-    fprintf(stderr, "[draw]");
+    {
+        extern unsigned int port_spani_trace_frame;
+        fprintf(stderr, "[draw] f=%u", port_spani_trace_frame);
+    }
     for (int i = 0; i < count; i++)
         fprintf(stderr, " %s", sym_name(funcs[i]));
     fprintf(stderr, "\n");
@@ -63,13 +68,13 @@ void port_trace_draw(void** funcs, int count)
 void port_trace_value(const char* tag, int value)
 {
     static int enabled = -1;
-    static const char* tags[16];
-    static int values[16];
+    static const char* tags[48];
+    static int values[48];
     if (enabled < 0)
         enabled = getenv("MSSB_TRACE_GAME") != NULL;
     if (!enabled)
         return;
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 48; i++)
     {
         if (tags[i] == NULL)
         {

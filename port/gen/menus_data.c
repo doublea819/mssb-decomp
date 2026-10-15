@@ -447,17 +447,13 @@ const f32 __gen_lbl_2_rodata_C48 GEN_SYM(lbl_2_rodata_C48) = 0.3f;
 const f32 __gen_lbl_2_rodata_C4C GEN_SYM(lbl_2_rodata_C4C) = -1.2f;
 
 // menus .data 0xE64
-u8 __gen_lbl_2_data_E64[36] GEN_SYM(lbl_2_data_E64) = {
-    0, 33, 0, 11, 0, 14, 0, 10, 0, 9, 0, 19, 0, 37, 0, 40,
-    0, 16, 0, 3, 0, 6, 0, 20, 0, 2, 0, 13, 0, 12, 0, 7,
-    0, 28, 0, 41,
+s16 __gen_lbl_2_data_E64[18] GEN_SYM(lbl_2_data_E64) = { // was raw big-endian bytes; the code reads it as s16
+    33, 11, 14, 10, 9, 19, 37, 40, 16, 3, 6, 20, 2, 13, 12, 7, 28, 41,
 };
 
 // menus .data 0xE88
-u8 __gen_lbl_2_data_E88[36] GEN_SYM(lbl_2_data_E88) = {
-    0, 0, 0, 1, 0, 4, 0, 5, 0, 6, 0, 13, 0, 12, 0, 21,
-    0, 24, 0, 10, 0, 11, 0, 2, 0, 3, 0, 17, 0, 40, 0, 20,
-    0, 16, 0, 14,
+s16 __gen_lbl_2_data_E88[18] GEN_SYM(lbl_2_data_E88) = { // was raw big-endian bytes; the code reads it as s16
+    0, 1, 4, 5, 6, 13, 12, 21, 24, 10, 11, 2, 3, 17, 40, 20, 16, 14,
 };
 
 // menus .rodata 0xE88

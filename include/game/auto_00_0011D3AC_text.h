@@ -7,6 +7,29 @@
 #include "C3/anim.h"            // ANIMBank
 
 // lbl_3_common_bss_32724: minigame result-screen assets and state, only the fields used here.
+#ifdef PORT_LP64
+// 64-bit: the pointer block (0x00-0x7C on GameCube) would be 0xB0 bytes and run over the flag
+// bytes from 0x96 that the HUD views share (and past the 0x124-byte object), so it gets its own
+// storage (g_port_mgAssets, MG_ASSETS) and this view keeps only the flags at their offsets.
+typedef struct MinigameAssetPtrs {
+    u8* model;
+    ShapeAnimPlayer anim;
+    void* skin;          // skin header for actor 17
+    void* textures[3];
+    ANIMBank* animBanks[3];
+} MinigameAssetPtrs;
+extern MinigameAssetPtrs g_port_mgAssets;
+#define MG_ASSETS g_port_mgAssets
+typedef struct MinigameAssets {
+    /*0x00*/ u8 _00[0x96];
+    /*0x96*/ u8 quit;
+    /*0x97*/ u8 _97[0xB7 - 0x97];
+    /*0xB7*/ u8 _B7;
+    /*0xB8*/ u8 _B8[0xD8 - 0xB8];
+    /*0xD8*/ u8 loadState;
+} MinigameAssets;
+#else
+#define MG_ASSETS lbl_3_common_bss_32724
 typedef struct MinigameAssets {
     /*0x00*/ u8* model;
     /*0x04*/ ShapeAnimPlayer anim;
@@ -20,6 +43,7 @@ typedef struct MinigameAssets {
     /*0xB8*/ u8 _B8[0xD8 - 0xB8];
     /*0xD8*/ u8 loadState;
 } MinigameAssets;
+#endif
 
 // lbl_3_common_bss_34C90 (GamePauseState, game/auto_00_00097144_text.h, whose lbl_3_common_bss_32724
 // declaration clashes with MinigameAssets): only the field used here.
@@ -122,7 +146,11 @@ typedef struct MG11D3View {
     /*0x0000*/ u8 _0000[0x1DF4];
     /*0x1DF4*/ u8 hit[4];          // per player: score changed this frame
     /*0x1DF8*/ u8 _1DF8[0x1E04 - 0x1DF8];
+#ifdef TARGET_PC
+    /*0x1E04*/ PTR32(void) rouletteTask; // fn_3_11DECC task (PTR32: GameCube layout)
+#else
     /*0x1E04*/ void* rouletteTask; // fn_3_11DECC task
+#endif
     /*0x1E08*/ u8 _1E08[0x1E1C - 0x1E08];
     /*0x1E1C*/ u8 roundPick[6];    // roulette result per round (1-based)
     /*0x1E22*/ u8 _1E22[0x1E2A - 0x1E22];

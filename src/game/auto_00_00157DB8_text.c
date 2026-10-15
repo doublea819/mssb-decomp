@@ -90,6 +90,13 @@ extern u8 lbl_3_data_FAC4[8];
 
 // fn_3_157DB8, size:0x70
 void fn_3_157DB8(s32 arg0) {
+#ifdef TARGET_PC
+    // PracticeEmitter/PracticeParticle use GameCube offsets (4-byte pointers); the real
+    // Emitter lives in rep_3880.c, next to its update callback.
+    extern void port_fn_3_157DB8(s32 count);
+    port_fn_3_157DB8(arg0);
+    return;
+#endif
     PracticeEmitter* e = fn_80033A24(fn_3_157AC4, 0x80, 0, 1, 1, 0x16);
     if (e != NULL) {
         e->index = 0;

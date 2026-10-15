@@ -312,7 +312,7 @@ void fn_3_117588(s32 idx) {
     GXLoadPosMtxImm(fn_80052768_getCamera(fn_8005268C())->view, GX_PNMTX0);
     GXSetCurrentMtx(GX_PNMTX0);
     GXSetProjection(fn_80052768_getCamera(fn_8005268C())->proj, GX_PERSPECTIVE);
-    fn_80033B58(lbl_3_common_bss_32724.textures[2], 0x13, GX_CLAMP, GX_CLAMP);
+    fn_80033B58(MG_ASSETS.textures[2], 0x13, GX_CLAMP, GX_CLAMP);
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     for (k = 0; k < 4; k++) {
         GXPosition3f32(quad[k].x, quad[k].y, quad[k].z);
@@ -435,7 +435,7 @@ void fn_3_117B78(s32 idx) {
     GXLoadPosMtxImm(fn_80052768_getCamera(fn_8005268C())->view, GX_PNMTX0);
     GXSetCurrentMtx(GX_PNMTX0);
     GXSetProjection(fn_80052768_getCamera(fn_8005268C())->proj, GX_PERSPECTIVE);
-    fn_80033B58(lbl_3_common_bss_32724.textures[2], 0x14, GX_CLAMP, GX_CLAMP);
+    fn_80033B58(MG_ASSETS.textures[2], 0x14, GX_CLAMP, GX_CLAMP);
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     for (k = 0; k < 4; k++) {
         GXPosition3f32(quad[k].x, quad[k].y, quad[k].z);
@@ -710,7 +710,7 @@ void fn_3_1189C8(s32 i, s32 a, s32 b, s32 d, u8 flag) {
     if (d != 0) {
         inv = 1.0f / (f32)d;
     }
-    x = lbl_3_common_bss_32724.animBanks[2];
+    x = MG_ASSETS.animBanks[2];
     o->animBank = x;
     o->seqNum = a;
     o->time = lbl_3_rodata_33AC;
@@ -1051,7 +1051,7 @@ void fn_3_119934(void) {
 // .text:0x00119C34 size:0x74 mapped:0x80758CC8
 void fn_3_119C34(void) {
     ActorObject* p = &lbl_8036E548.objs->objects[31];
-    void* v = lbl_3_common_bss_32724.animBanks[1];
+    void* v = MG_ASSETS.animBanks[1];
     s8 t;
     p->animBank = v;
     p->seqNum = 1;
@@ -1071,7 +1071,7 @@ void fn_3_119C34(void) {
 // .text:0x00119CA8 size:0x80 mapped:0x80758D3C
 void fn_3_119CA8(s32 i) {
     ActorObject* e = &lbl_8036E548.objs->objects[i];
-    void* v = lbl_3_common_bss_32724.animBanks[1];
+    void* v = MG_ASSETS.animBanks[1];
     s8 t;
     e->animBank = v;
     e->seqNum = 0;
@@ -1102,7 +1102,7 @@ void fn_3_119D34(void) {
         {
 
         ActorObject* p = &lbl_8036E548.objs->objects[31];
-        void* v = lbl_3_common_bss_32724.animBanks[1];
+        void* v = MG_ASSETS.animBanks[1];
         s8 t;
         p->animBank = v;
         p->seqNum = 1;
@@ -1282,7 +1282,7 @@ u32 fn_3_11A350(int i) {
 // .text:0x0011A38C size:0x7C mapped:0x80759420
 void fn_3_11A38C(s32 i, s16 h) {
     ActorObject* e = &lbl_8036E548.objs->objects[i];
-    void* v = lbl_3_common_bss_32724.animBanks[0];
+    void* v = MG_ASSETS.animBanks[0];
     s8 t;
     e->animBank = v;
     e->seqNum = h;
@@ -1490,16 +1490,16 @@ void fn_3_11AB2C(void) {
         e->visible = 1;
         fn_3_11A92C(e, n);
         if (g_Pitcher.pitcherActionState >= 2 && lbl_80366158._28 == 0) {
-            t = &lbl_3_common_bss_32724.anim.state;
+            t = &MG_ASSETS.anim.state;
             if (t != NULL) {
-                lbl_3_common_bss_32724.anim.state.active = 1;
+                MG_ASSETS.anim.state.active = 1;
             }
             fn_80024DB0(t);
-            fn_80024FA4((ShapeModel**)&lbl_8036E548.objs->objects[n].actor, lbl_3_common_bss_32724.anim.model, t, -1);
-        } else if (g_Pitcher.pitcherActionState < 2 && lbl_3_common_bss_32724.anim.state.loops == 0) {
-            lbl_3_common_bss_32724.anim.state.keyIdx = 0;
-            lbl_3_common_bss_32724.anim.state.frame = lbl_3_common_bss_32724.anim.state.keyIdx;
-            lbl_3_common_bss_32724.anim.state.loops = 1;
+            fn_80024FA4((ShapeModel**)&lbl_8036E548.objs->objects[n].actor, MG_ASSETS.anim.model, t, -1);
+        } else if (g_Pitcher.pitcherActionState < 2 && MG_ASSETS.anim.state.loops == 0) {
+            MG_ASSETS.anim.state.keyIdx = 0;
+            MG_ASSETS.anim.state.frame = MG_ASSETS.anim.state.keyIdx;
+            MG_ASSETS.anim.state.loops = 1;
         }
     }
 }
@@ -1563,10 +1563,14 @@ void fn_3_11AC6C(void) {
 // .text:0x0011B75C size:0x448 mapped:0x8075A7F0
 void fn_3_11B75C(void) {
     lbl_8036E548.count = 0xF4;
+#ifdef PORT_LP64
+    lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * sizeof(Rep3310Sprite)); // 0x30 on PC
+#else
     lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * 0x28);
+#endif
     lbl_8036E548.objs = ActorObjectInitTable(lbl_8036E548.count);
     fn_3_11D2C8(0, 0, 0x82, 0, 0);
-    fn_3_11D2C8(0x11, 0x82, 3, lbl_3_common_bss_32724.animBanks[2], lbl_3_common_bss_32724.skin);
+    fn_3_11D2C8(0x11, 0x82, 3, MG_ASSETS.animBanks[2], MG_ASSETS.skin);
     fn_3_11D2C8(0x12, 0x85, 0x32, 0, 0);
     fn_3_11D2C8(0xD, 0xB7, 0x32, 0, 0);
     fn_3_11D2C8(0x13, 0xE9, 7, 0, 0);
@@ -1576,7 +1580,11 @@ void fn_3_11B75C(void) {
 // .text:0x0011BBA4 size:0x488 mapped:0x8075AC38
 void fn_3_11BBA4(void) {
     lbl_8036E548.count = 0xEE;
+#ifdef PORT_LP64
+    lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * sizeof(Rep3310Sprite)); // 0x30 on PC
+#else
     lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * 0x28);
+#endif
     lbl_8036E548.objs = ActorObjectInitTable(lbl_8036E548.count);
     fn_3_11D2C8(0, 0, 0x82, 0, 0);
     fn_3_11D2C8(0x15, 0x82, 0x64, 0, 0);
@@ -1590,7 +1598,11 @@ void fn_3_11BBA4(void) {
 // .text:0x0011C02C size:0x2A0 mapped:0x8075B0C0
 void fn_3_11C02C(void) {
     lbl_8036E548.count = 0xA7;
+#ifdef PORT_LP64
+    lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * sizeof(Rep3310Sprite)); // 0x30 on PC
+#else
     lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * 0x28);
+#endif
     lbl_8036E548.objs = ActorObjectInitTable(lbl_8036E548.count);
     fn_3_11D2C8(0, 0, 0x82, 0, 0);
     fn_3_11D2C8(0xB, 0x82, 0x23, 0, 0);
@@ -1600,7 +1612,7 @@ void fn_3_11C02C(void) {
 
 // .text:0x0011C2CC size:0x32C mapped:0x8075B360
 static inline void initObj_11C2CC(s32 i) {
-    void* v = lbl_3_common_bss_32724.animBanks[1];
+    void* v = MG_ASSETS.animBanks[1];
     ActorObject* e = &lbl_8036E548.objs->objects[i];
     e->animBank = v;
     e->seqNum = 0;
@@ -1618,7 +1630,11 @@ static inline void initObj_11C2CC(s32 i) {
 void fn_3_11C2CC(void) {
     s32 i;
     lbl_8036E548.count = 0x20;
+#ifdef PORT_LP64
+    lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * sizeof(Rep3310Sprite)); // 0x30 on PC
+#else
     lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * 0x28);
+#endif
     lbl_8036E548.objs = ActorObjectInitTable(lbl_8036E548.count);
     fn_3_11D2C8(8, 0, 0xF, 0, 0);
     fn_3_11D2C8(9, 0xF, 1, 0, 0);
@@ -1631,7 +1647,7 @@ void fn_3_11C2CC(void) {
 
 // .text:0x0011C5F8 size:0x708 mapped:0x8075B68C
 static inline void initObj_11C5F8(s32 i, s16 h) {
-    void* v = lbl_3_common_bss_32724.animBanks[0];
+    void* v = MG_ASSETS.animBanks[0];
     ActorObject* e = &lbl_8036E548.objs->objects[i];
     e->animBank = v;
     e->seqNum = h;
@@ -1649,7 +1665,11 @@ static inline void initObj_11C5F8(s32 i, s16 h) {
 void fn_3_11C5F8(void) {
     u16 i;
     lbl_8036E548.count = 0x111;
+#ifdef PORT_LP64
+    lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * sizeof(Rep3310Sprite)); // 0x30 on PC
+#else
     lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * 0x28);
+#endif
     lbl_8036E548.objs = ActorObjectInitTable(lbl_8036E548.count);
     fn_3_11D2C8(0, 0, 0x82, 0, 0);
     fn_3_11D2C8(0x15, 0x82, 0x64, 0, 0);
@@ -1670,13 +1690,17 @@ void fn_3_11C5F8(void) {
 extern void* _OSAllocFromHeap(int, int);
 void fn_3_11CD00(void) {
     lbl_8036E548.count = 3;
+#ifdef PORT_LP64
+    lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * sizeof(Rep3310Sprite)); // 0x30 on PC
+#else
     lbl_8036E548.sprites = _OSAllocFromHeap(0x20, lbl_8036E548.count * 0x28);
+#endif
     lbl_8036E548.objs = ActorObjectInitTable(lbl_8036E548.count);
     fn_3_11D2C8(0xD, 0, 1, 0, 0);
     fn_3_11D2C8(0xE, 1, 1, 0, 0);
     fn_3_11D2C8(0xF, 2, 1, 0, 0);
-    lbl_3_common_bss_32724.anim.state.speed = 0.5f;
-    fn_80025C58((ShapeData*)lbl_3_common_bss_32724.model, (ShapeModel**)&lbl_8036E548.objs->objects[2].actor);
+    MG_ASSETS.anim.state.speed = 0.5f;
+    fn_80025C58((ShapeData*)MG_ASSETS.model, (ShapeModel**)&lbl_8036E548.objs->objects[2].actor);
 }
 
 // .text:0x0011CF04 size:0x80 mapped:0x8075BF98

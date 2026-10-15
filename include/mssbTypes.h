@@ -54,6 +54,24 @@ u8 __##currentOffset##padding[((currentOffset) - (lastOffset) - sizeof(typeOfLas
 #define LBL_80366158_PAD(n) (n)
 #endif
 
+// Stadium objects (lbl_3_common_bss_350E4.objs) are 0xE8 bytes on GameCube and
+// sizeof(StadiumObj) = 0x128 on PC (game/rep_1D58.h). A per-stadium view wraps
+// its fields in STADIUM_OBJ_BEGIN/END so it indexes the array with the same
+// stride. Header byte fields from 0x90 on sit 0x20 further on PC (the 0x74
+// pointer is 8-aligned and the seven header pointers are 8 bytes):
+// STADIUM_OBJ_PAD(n) gives a GameCube offset >= 0x90 on this platform.
+#ifdef PORT_LP64
+#define STADIUM_OBJ_SIZE 0x128
+#define STADIUM_OBJ_BEGIN union { struct {
+#define STADIUM_OBJ_END }; u8 _stadiumObjSize[STADIUM_OBJ_SIZE]; };
+#define STADIUM_OBJ_PAD(n) ((n) + 0x20)
+#else
+#define STADIUM_OBJ_SIZE 0xE8
+#define STADIUM_OBJ_BEGIN
+#define STADIUM_OBJ_END
+#define STADIUM_OBJ_PAD(n) (n)
+#endif
+
 // Enum macro to help debug types
 #define E(storage, enumType) storage
 

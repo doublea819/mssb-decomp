@@ -174,7 +174,11 @@ extern u32 sndFXCtrl(int, int, u8);
 extern f64 lbl_3_rodata_27A8;
 extern f64 lbl_3_rodata_27B0;
 extern int rand(void);
+#ifdef PORT_LP64
+typedef struct { u8 pad[STADIUM_OBJ_PAD(0x90)]; u8 rest : 7; u8 f : 1; } BF90_c2; // f: visible (MWCC bit order)
+#else
 typedef struct { u8 pad[0x90]; u8 f : 1; } BF90_c2;
+#endif
 extern const f32 lbl_3_rodata_27A0;
 extern const f32 lbl_3_rodata_27A4;
 typedef struct { f32 x, y, z; u8 type; u8 _0D[3]; } T16; // type 0xD ends a list
@@ -2495,7 +2499,11 @@ u8* fn_3_D2684(C2ObjMain* p) {
 // .text:0x000D278C size:0x280 mapped:0x80711820
 extern f32 lbl_3_rodata_2810;
 extern f32 lbl_3_rodata_2814;
+#ifdef PORT_LP64
+typedef struct { u8 pad[STADIUM_OBJ_PAD(0xA0)]; f32 a0, a4, a8, ac, b0, b4; } D278F;
+#else
 typedef struct { u8 pad[0xA0]; f32 a0, a4, a8, ac, b0, b4; } D278F;
+#endif
 void fn_3_D278C(C2ObjMain* p) {
     RopeNode* c;
     Mtx m;
@@ -3297,8 +3305,16 @@ s32 fn_3_D5470(f32* a, f32* b) {
 
 // .text:0x000D5494 size:0x158 mapped:0x80714528
 typedef struct { f32 f0; s32 f4; } D5494E;
+#ifdef PORT_LP64
+typedef union { struct { u8 pad[STADIUM_OBJ_PAD(0x90)]; u8 rest : 7; u8 f : 1; u8 pad91[0x9D - 0x91]; u8 f9D; }; u8 _size[STADIUM_OBJ_SIZE]; } D5494C;
+#else
 typedef struct { u8 pad[0x90]; u8 f : 1; u8 pad91[0x9D - 0x91]; u8 f9D; u8 pad2[0xE8 - 0x9E]; } D5494C;
+#endif
+#ifdef PORT_LP64
+typedef union { struct { D5494C* arr; }; struct { u8 _at_p14[0x28]; D5494E* p14; }; struct { u8 _at_count[0x60]; u32 count; }; } D5494B;
+#else
 typedef struct { D5494C* arr; u8 pad0[0x14 - 4]; D5494E* p14; u8 pad1[0x30 - 0x18]; u32 count; } D5494B;
+#endif
 extern f32 lbl_3_rodata_26B8;
 extern f32 lbl_3_rodata_27E0;
 extern f32 lbl_3_rodata_289C;
@@ -3341,6 +3357,9 @@ void fn_3_D5494(f32 (*m)[4]) {
 
 // .text:0x000D55EC size:0x580 mapped:0x80714680
 // The extra fields of the stadium object list (lbl_3_common_bss_350E4) used by the sort.
+#ifdef PORT_LP64
+typedef union C2SortMgr { struct { PiranhaPlant* objs; }; struct { u8 _at_sorted[0x28]; C2SortEnt* sorted; }; struct { u8 _at_count[0x60]; s32 count; }; struct { u8 _at_sbd[0xB8]; u8 sortByDepth; }; } C2SortMgr;
+#else
 typedef struct C2SortMgr {
     /*0x00*/ PiranhaPlant* objs;
     /*0x04*/ u8 _04[0x14 - 0x04];
@@ -3350,6 +3369,7 @@ typedef struct C2SortMgr {
     /*0x34*/ u8 _34[0x6C - 0x34];
     /*0x6C*/ u8 sortByDepth;
 } C2SortMgr;
+#endif
 
 
 extern void* fn_800ACF34(s32 align, s32 size);
@@ -3474,8 +3494,16 @@ void fn_3_D55EC(MtxPtr view, C2SortEnt* out) {
 
 // .text:0x000D5B6C size:0x120 mapped:0x80714C00
 // TODO(port): pad-offset view of the 0xE8-byte stadium object (GameCube layout)
+#ifdef PORT_LP64
+typedef union { struct { u8 pad[0x80]; void* f78; }; u8 _size[STADIUM_OBJ_SIZE]; } D5B6CCtl;
+#else
 typedef struct { u8 pad[0x78]; void* f78; u8 pad2[0xE8 - 0x7C]; } D5B6CCtl;
+#endif
+#ifdef PORT_LP64
+typedef union { struct { D5B6CCtl* arr; }; struct { u8 _at_p3C[0x78]; u32* p3C; }; struct { u8 _at_p40[0x80]; u16* p40; }; struct { u8 _at_p44[0x88]; u32* p44; }; struct { u8 _at_p48[0x90]; u8* p48; }; } D5B6CBss;
+#else
 typedef struct { D5B6CCtl* arr; u8 pad0[0x3C - 4]; u32* p3C; u16* p40; u32* p44; u8* p48; } D5B6CBss;
+#endif
 typedef struct { u32 w[17]; } D5B6CCpy;
 extern void fn_3_B8414(void*, void*);
 extern void fn_3_B8464(void*, void*);
@@ -3500,8 +3528,16 @@ void fn_3_D5B6C(s32* a) {
 // .text:0x000D5C8C size:0x1F4 mapped:0x80714D20
 typedef struct { u8 pad[0xC]; u8 fC; u8 padD; u8 fE; u8 padF; } D5C8CEnt;
 // TODO(port): pad-offset view of the 0xE8-byte stadium object (GameCube layout)
+#ifdef PORT_LP64
+typedef union { struct { u8 pad[0x80]; void* f78; }; u8 _size[STADIUM_OBJ_SIZE]; } D5C8CCtl;
+#else
 typedef struct { u8 pad[0x78]; void* f78; u8 pad2[0xE8 - 0x7C]; } D5C8CCtl;
+#endif
+#ifdef PORT_LP64
+typedef union { struct { D5C8CCtl* arr; }; struct { u8 _at_p3C[0x78]; u32* p3C; }; struct { u8 _at_p40[0x80]; u16* p40; }; struct { u8 _at_p44[0x88]; u32* p44; }; struct { u8 _at_p48[0x90]; u8* p48; }; } D5C8CBss;
+#else
 typedef struct { D5C8CCtl* arr; u8 pad0[0x3C - 4]; u32* p3C; u16* p40; u32* p44; u8* p48; } D5C8CBss;
+#endif
 extern const f32 lbl_3_rodata_2758;
 extern void fn_3_B8574(void);
 void fn_3_D5C8C(s32* a) {
@@ -3528,7 +3564,7 @@ void fn_3_D5C8C(s32* a) {
         for (j = 0; j < lbl_3_bss_A023; e++, j++) {
             if (k == e->fE && e->fC != 0xD) {
                 idx = j + lbl_3_bss_A022;
-                if ((((u8*)((D5C8CBss*)&lbl_3_common_bss_350E4)->arr)[idx * 0xE8 + 0x90] >> 6) & 1) {
+                if ((((u8*)((D5C8CBss*)&lbl_3_common_bss_350E4)->arr)[idx * STADIUM_OBJ_SIZE + STADIUM_OBJ_PAD(0x90)] >> 6) & 1) {
                     *(s32*)((u8*)g->p44 + off) = idx;
                     g->p3C[*a] += 1;
                     c = &((D5C8CBss*)&lbl_3_common_bss_350E4)->arr[idx];
@@ -3572,7 +3608,7 @@ void fn_3_D5E80(s32* a) {
         for (j = 0; j < lbl_3_bss_A025; e++, j++) {
             if (k == e->fE && e->fC != 0xD) {
                 idx = j + lbl_3_bss_A024;
-                if ((((u8*)((D5C8CBss*)&lbl_3_common_bss_350E4)->arr)[idx * 0xE8 + 0x90] >> 6) & 1) {
+                if ((((u8*)((D5C8CBss*)&lbl_3_common_bss_350E4)->arr)[idx * STADIUM_OBJ_SIZE + STADIUM_OBJ_PAD(0x90)] >> 6) & 1) {
                     *(s32*)((u8*)g->p44 + off) = idx;
                     g->p3C[*a] += 1;
                     c = &((D5C8CBss*)&lbl_3_common_bss_350E4)->arr[idx];
@@ -3580,10 +3616,10 @@ void fn_3_D5E80(s32* a) {
                     cpy = *(D5B6CCpy*)c;
                     CTRLBuildMatrix((Control*)&cpy, m2);
                     fn_3_B8464(m2, c->f78);
-                    CTRLSetTranslation((Control*)&cpy, *(f32*)((u8*)c + 0xAC) + lbl_3_data_1849C[((u8*)c)[0x9C]].x, lbl_3_rodata_2664, *(f32*)((u8*)c + 0xAC) + lbl_3_data_1849C[((u8*)c)[0x9C]].z);
+                    CTRLSetTranslation((Control*)&cpy, *(f32*)((u8*)c + STADIUM_OBJ_PAD(0xAC)) + lbl_3_data_1849C[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x, lbl_3_rodata_2664, *(f32*)((u8*)c + STADIUM_OBJ_PAD(0xAC)) + lbl_3_data_1849C[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z);
                     CTRLBuildMatrix((Control*)&cpy, m2);
                     fn_3_B8464(m2, c->f78);
-                    CTRLSetTranslation((Control*)&cpy, lbl_3_data_1849C[((u8*)c)[0x9C]].x - *(f32*)((u8*)c + 0xAC), lbl_3_rodata_2664, lbl_3_data_1849C[((u8*)c)[0x9C]].z - *(f32*)((u8*)c + 0xAC));
+                    CTRLSetTranslation((Control*)&cpy, lbl_3_data_1849C[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x - *(f32*)((u8*)c + STADIUM_OBJ_PAD(0xAC)), lbl_3_rodata_2664, lbl_3_data_1849C[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z - *(f32*)((u8*)c + STADIUM_OBJ_PAD(0xAC)));
                     CTRLBuildMatrix((Control*)&cpy, m2);
                     fn_3_B8464(m2, c->f78);
                 }
@@ -3618,16 +3654,16 @@ void fn_3_D60C0(s32* a) {
         off = v * 4;
         for (j = 0; j < lbl_3_bss_A02B; e++, j++) {
             if (k == ((u8*)e)[0xE] && ((u8*)e)[0xC] != 0xD) {
-                if ((((u8*)((D5C8CBss*)&lbl_3_common_bss_350E4)->arr)[(idx = j + lbl_3_bss_A02A) * 0xE8 + 0x90] >> 6) & 1) {
+                if ((((u8*)((D5C8CBss*)&lbl_3_common_bss_350E4)->arr)[(idx = j + lbl_3_bss_A02A) * STADIUM_OBJ_SIZE + STADIUM_OBJ_PAD(0x90)] >> 6) & 1) {
                     *(s32*)((u8*)g->p44 + off) = idx;
                     g->p3C[*a] += 1;
                     c = &((D5C8CBss*)&lbl_3_common_bss_350E4)->arr[idx];
                     off += 4;
                     cpy = *(D5B6CCpy*)c;
-                    CTRLSetTranslation((Control*)&cpy, lbl_3_data_18364[((u8*)c)[0x9C]].x, -(lbl_3_data_18364[((u8*)c)[0x9C]].y - lbl_3_rodata_27D0), lbl_3_data_18364[((u8*)c)[0x9C]].z);
+                    CTRLSetTranslation((Control*)&cpy, lbl_3_data_18364[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x, -(lbl_3_data_18364[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].y - lbl_3_rodata_27D0), lbl_3_data_18364[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z);
                     CTRLBuildMatrix((Control*)&cpy, m2);
                     fn_3_B8464(m2, c->f78);
-                    CTRLSetTranslation((Control*)&cpy, lbl_3_data_18364[((u8*)c)[0x9C]].x, -(lbl_3_rodata_27D0 + lbl_3_data_18364[((u8*)c)[0x9C]].y), lbl_3_data_18364[((u8*)c)[0x9C]].z);
+                    CTRLSetTranslation((Control*)&cpy, lbl_3_data_18364[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x, -(lbl_3_rodata_27D0 + lbl_3_data_18364[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].y), lbl_3_data_18364[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z);
                     CTRLBuildMatrix((Control*)&cpy, m2);
                     fn_3_B8464(m2, c->f78);
                 }
@@ -3663,10 +3699,10 @@ static inline void D62F0_addGroups(s32* a) {
         cpy = *(D5B6CCpy*)c;
         CTRLBuildMatrix((Control*)&cpy, m2);
         fn_3_B8464(m2, c->f78);
-        CTRLSetTranslation((Control*)&cpy, lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[0x9C]].x, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[0x9C]].y), lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[0x9C]].z);
+        CTRLSetTranslation((Control*)&cpy, lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].y), lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z);
         CTRLBuildMatrix((Control*)&cpy, m2);
         fn_3_B8464(m2, c->f78);
-        CTRLSetTranslation((Control*)&cpy, lbl_3_data_182C8[((u8*)c)[0x9C]].x - lbl_3_rodata_2800, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[0x9C]].y), lbl_3_data_182C8[((u8*)c)[0x9C]].z - lbl_3_rodata_2800);
+        CTRLSetTranslation((Control*)&cpy, lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x - lbl_3_rodata_2800, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].y), lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z - lbl_3_rodata_2800);
         CTRLBuildMatrix((Control*)&cpy, m2);
         fn_3_B8464(m2, c->f78);
         if (g->p3C[*a] != 0) {
@@ -3696,10 +3732,10 @@ void fn_3_D62F0(s32* a) {
         cpy = *(D5B6CCpy*)c;
         CTRLBuildMatrix((Control*)&cpy, m2);
         fn_3_B8464(m2, c->f78);
-        CTRLSetTranslation((Control*)&cpy, lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[0x9C]].x, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[0x9C]].y), lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[0x9C]].z);
+        CTRLSetTranslation((Control*)&cpy, lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].y), lbl_3_rodata_2800 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z);
         CTRLBuildMatrix((Control*)&cpy, m2);
         fn_3_B8464(m2, c->f78);
-        CTRLSetTranslation((Control*)&cpy, lbl_3_data_182C8[((u8*)c)[0x9C]].x - lbl_3_rodata_2800, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[0x9C]].y), lbl_3_data_182C8[((u8*)c)[0x9C]].z - lbl_3_rodata_2800);
+        CTRLSetTranslation((Control*)&cpy, lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].x - lbl_3_rodata_2800, -(lbl_3_rodata_28A4 + lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].y), lbl_3_data_182C8[((u8*)c)[STADIUM_OBJ_PAD(0x9C)]].z - lbl_3_rodata_2800);
         CTRLBuildMatrix((Control*)&cpy, m2);
         fn_3_B8464(m2, c->f78);
         if (g->p3C[*a] != 0) {
@@ -3711,7 +3747,11 @@ void fn_3_D62F0(s32* a) {
 
 
 // .text:0x000D6514 size:0x2B8 mapped:0x807155A8
+#ifdef PORT_LP64
+typedef union { struct { D5C8CCtl* arr; }; struct { u8 _at_count[0x60]; u32 count; }; struct { u8 _at_p3C[0x78]; u32* p3C; }; struct { u8 _at_p40[0x80]; u16* p40; }; struct { u8 _at_p44[0x88]; u32* p44; }; struct { u8 _at_p48[0x90]; u8* p48; }; struct { u8 _at_f64[0xB0]; s16 f64; }; } D6514Bss;
+#else
 typedef struct { D5C8CCtl* arr; u8 pad0[0x30 - 4]; u32 count; u8 pad1[0x3C - 0x34]; u32* p3C; u16* p40; u32* p44; u8* p48; u8 pad2[0x64 - 0x4C]; s16 f64; } D6514Bss;
+#endif
 extern void* _OSAllocFromHeap(s32, u32);
 // NONMATCHING 95%: buffer size sum order and saved-register numbering (r25 vs r26) differ
 #if NONMATCHING

@@ -302,7 +302,8 @@ static u16 lbl_3_data_1B7D0[4] = {375, 376, 377, 373}; // per rank
 
 // Layout object (LayoutObj in main/file_8000F150.h), only the fields used here.
 typedef struct ResultsSprite {
-    /*0x00*/ u8 _00[0x54];
+    /*0x00*/ void* _00[3]; // three pointers (GameCube: 0xC bytes; PC: the fields below sit later)
+    /*0x0C*/ u8 _0C[0x54 - 0x0C];
     /*0x54*/ u32 flags;
     /*0x58*/ u8 _58[0x4];
     /*0x5C*/ u32 frame; // 16.16
@@ -412,7 +413,8 @@ extern void fn_3_ED6E0(void);
 // lbl_803CC1B8 are declared as raw bytes in this file (the older functions
 // index them by offset), so the newer code reaches them through these.
 typedef struct EaSprite {
-    /*0x00*/ u8 _00[0x48];
+    /*0x00*/ void* _00[3]; // three pointers (GameCube: 0xC bytes; PC: the fields below sit later)
+    /*0x0C*/ u8 _0C[0x48 - 0x0C];
     /*0x48*/ f32 x;
     /*0x4C*/ f32 y;
     /*0x50*/ u8 _50[0x4];
@@ -425,6 +427,13 @@ typedef struct EaSprite {
     /*0x68*/ u8 visible;
     /*0x69*/ u8 animState;
 } EaSprite;
+#ifdef TARGET_PC
+#include "main/file_8000F150.h"
+#include <stddef.h>
+_Static_assert(offsetof(EaSprite, anim) == offsetof(LayoutObj, _64), "EaSprite view");
+_Static_assert(offsetof(EaSprite, x) == offsetof(LayoutObj, x), "EaSprite view");
+_Static_assert(offsetof(ResultsSprite, frame) == offsetof(LayoutObj, _5C), "ResultsSprite view");
+#endif
 
 typedef struct EaSlot {
     /*0x0*/ EaSprite* obj;

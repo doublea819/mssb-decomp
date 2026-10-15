@@ -56,12 +56,12 @@ s32 port_stadium_select_enabled(void) {
     return all_modes();
 }
 
-// The game options screen offers Star Skills (option 2). Off on PC: star moves
-// and star chances are both gated on it.
+// The game options screen offers Star Skills (option 2), which gates star moves,
+// star chances and the HUD star meter. On unless user.ini says `starskills = false`.
 s32 port_star_skills_enabled(void) {
     static s32 s_on = -1;
     if (s_on < 0) {
-        s_on = port_user_ini_get("starskills") != NULL && port_user_ini_bool("starskills");
+        s_on = port_user_ini_get("starskills") == NULL || port_user_ini_bool("starskills");
     }
     return s_on;
 }

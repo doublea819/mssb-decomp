@@ -804,11 +804,26 @@ typedef struct {
     DOTexInfo* tex;
     u32 key; // texMap, wrapS, wrapT
     u32 frame;
+    // What the objects were made from: games swap a record's image/TLUT
+    // (team logos, animated textures) between draws of one frame.
+    void* image;
+    void* tlut;
+    u32 desc; // width, height, format
     GXTexObj texObj;
     GXTlutObj tlutObj;
 } StateTexCache;
 
 static StateTexCache sStateTexCache[512];
+
+// MSSB_NO_STATE_TEX_CACHE=1 turns the cache off (to rule it out).
+static int port_state_tex_cache_off(void) {
+    static int s_off = -1;
+    if (s_off < 0) {
+        const char* env = getenv("MSSB_NO_STATE_TEX_CACHE");
+        s_off = env != NULL && env[0] != '\0' && env[0] != '0';
+    }
+    return s_off;
+}
 #endif
 
 void SetState(DisplayStateList* state, struct DODisplayObj* dispObj, MtxPtr camera) {
@@ -877,7 +892,10 @@ void SetState(DisplayStateList* state, struct DODisplayObj* dispObj, MtxPtr came
         // Reuse this frame's objects for a texture set again (see StateTexCache).
         stc = &sStateTexCache[(((uintptr_t)tex >> 3) ^ texMap) % 512];
         stcKey = texMap | (wrapS << 4) | (wrapT << 8);
-        if (stc->tex == tex && stc->key == stcKey && stc->frame == VIGetRetraceCount()) {
+        if (stc->tex == tex && stc->key == stcKey && stc->frame == VIGetRetraceCount() &&
+            stc->image == PTR32_GET(void, tex->image) && stc->tlut == PTR32_GET(void, tex->tlut) &&
+            stc->desc == ((u32)tex->width | ((u32)tex->height << 12) | ((u32)tex->format << 24)) &&
+            !port_state_tex_cache_off()) {
             lbl_803CB5FC[texMap] = stc->texObj;
             if (tex->tlut != NULL) {
                 lbl_803CB49C[texMap] = stc->tlutObj;
@@ -900,6 +918,9 @@ void SetState(DisplayStateList* state, struct DODisplayObj* dispObj, MtxPtr came
 #ifdef TARGET_PC
         stc->tex = tex;
         stc->key = stcKey;
+        stc->image = PTR32_GET(void, tex->image);
+        stc->tlut = PTR32_GET(void, tex->tlut);
+        stc->desc = (u32)tex->width | ((u32)tex->height << 12) | ((u32)tex->format << 24);
         stc->frame = VIGetRetraceCount();
         stc->texObj = lbl_803CB5FC[texMap];
         stc->tlutObj = lbl_803CB49C[texMap];

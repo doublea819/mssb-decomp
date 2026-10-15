@@ -2326,10 +2326,18 @@ void fn_3_C8650(void** files) {
     fn_80034E20(bss->fD0, lbl_3_data_10C1C);
 
     g->count = 32;
+#ifdef PORT_LP64
+    /* 32 stadium objects (0x1D00 = 32 * 0xE8 on GameCube) at the PC stride */
+    g->arr = _OSAllocFromHeap(0x20, 32 * STADIUM_OBJ_SIZE);
+    memset(g->arr, 0, 32 * STADIUM_OBJ_SIZE);
+    g->arr2 = _OSAllocFromHeap(0x20, 32 * STADIUM_OBJ_SIZE);
+    memset(g->arr2, 0, 32 * STADIUM_OBJ_SIZE);
+#else
     g->arr = _OSAllocFromHeap(0x20, 0x1D00);
     memset(g->arr, 0, 0x1D00);
     g->arr2 = _OSAllocFromHeap(0x20, 0x1D00);
     memset(g->arr2, 0, 0x1D00);
+#endif
 
     // slot 0: fn_3_C4068
     o = (StadObj1FD8*)g->arr;

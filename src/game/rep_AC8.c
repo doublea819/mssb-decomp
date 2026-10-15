@@ -6981,7 +6981,11 @@ void fn_3_3A234(int i) {
             f->_050 = f->_050 * lbl_3_data_21A14[6];
         }
         if (((s8)g_Minigame.playerIDWithPowerup[0]) == f->_20D) {
+#ifdef TARGET_PC
+            f->_050 = f->_050 * *PTR32_GET(f32, g_Minigame.starDashRelated_0_5Or1_5);
+#else
             f->_050 = f->_050 * *((f32*)g_Minigame.starDashRelated_0_5Or1_5);
+#endif
         }
     }
 }

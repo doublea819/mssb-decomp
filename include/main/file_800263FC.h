@@ -16,6 +16,34 @@
 
 struct ActorObject;
 
+// Particle colours are written and read both as one RGBA word (0xRRGGBBAA,
+// what GXColor1u32 takes and what the parameter tables hold) and as bytes
+// (color.c.a / color.v[3] = alpha, v[k] += colorStep.v[k]). On GameCube the
+// two views agree. On a little-endian host the word's alpha is byte 0 while
+// c.a/v[3] is its red byte, so effects whose alpha is animated through the
+// byte views (fire: 0xFFFFFF00 + per-frame c.a) never become visible. The
+// port keeps the GameCube byte order (r, g, b, a) in memory and converts at
+// the word accesses.
+#ifdef TARGET_PC
+static inline u32 port_rgba_get(const void* col) {
+    const u8* b = (const u8*)col;
+    return ((u32)b[0] << 24) | ((u32)b[1] << 16) | ((u32)b[2] << 8) | (u32)b[3];
+}
+static inline void port_rgba_set(void* col, u32 rgba) {
+    u8* b = (u8*)col;
+    b[0] = (u8)(rgba >> 24);
+    b[1] = (u8)(rgba >> 16);
+    b[2] = (u8)(rgba >> 8);
+    b[3] = (u8)rgba;
+}
+#define PCOLOR_WORD(col, word) port_rgba_get(&(col))
+#define PCOLOR_SET(col, x) port_rgba_set(&(col), (u32)(x))
+#else
+#define PCOLOR_WORD(col, word) ((col).word)
+#define PCOLOR_SET(col, x) ((col).rgba = (x))
+#endif
+#define PCOLOR_GET(col) PCOLOR_WORD(col, rgba)
+
 typedef struct Particle {
     /* 0x00 */ struct Particle* next;
     /* 0x04 */ Vec pos;
@@ -187,7 +215,13 @@ typedef struct Emitter {
             /* 0x40 */ u16 unk40;
         } t10;
         struct {
+#ifdef TARGET_PC
+            // 4 bytes as on the GameCube: fn_3_151204 also writes t1.pos.y..dir.x (union + 4) for this
+            // emitter, which an 8-byte pointer would overlap (Wall Ball crash).
+            /* 0x18 */ PTR32(struct ActorObject) obj;
+#else
             /* 0x18 */ struct ActorObject* obj; // actor whose bones the particles follow (game.rel rep_3880)
+#endif
         } follow;
         struct {
             /* 0x18 */ Vec origin; // game.rel rep_3880 sweep (fn_3_14B53C)

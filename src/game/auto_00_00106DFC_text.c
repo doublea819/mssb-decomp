@@ -1,3 +1,15 @@
+#ifdef TARGET_PC
+#define MG_TASK_PTR PTR32_GET(void, g_Minigame._1E04)
+#else
+#define MG_TASK_PTR (g_Minigame._1E04)
+#endif
+#ifdef TARGET_PC
+// Character select (PC): set while a player's panels are hidden only because the new character's
+// model is still loading (the game clears _19E8[i]._7 for ~20 frames of hover + ~25 frames of load).
+// The 2D panels don't need the model, so the HUD (fn_3_12A910) keeps them shown meanwhile; _7 itself
+// still gates confirming the pick.
+u8 g_port_selLoading[4];
+#endif
 #include "game/auto_00_00106DFC_text.h"
 // UnknownHomes_Game.h gives the typed globals; its guessed prototype of this unit's
 // minigame_checkIfAIInputIs_Algorithmic_Or_ControllerBased disagrees, so hide it.
@@ -124,7 +136,11 @@ s16 lbl_3_data_21A60[2] = {60, 10};
 f32 lbl_3_data_21A64[9] = {30.0f, 1.5f, 0.4f, 0.7f, 50.0f, 0.5f, 60.0f, 120.0f, 300.0f};
 s16 lbl_3_data_21A88[4] = {2, 3, 4, 4};
 s16 lbl_3_data_21A90[32] = {3, 5, 3, 5, 2, 5, 2, 5, 3, 5, 2, 5, 2, 4, 2, 4, 3, 5, 2, 4, 1, 3, 1, 3, 3, 5, 2, 4, 1, 3, 1, 3};
+#ifdef TARGET_PC
+s16 lbl_3_data_21AD0[16] = {4, 4, 3, 3, 4, 3, 2, 2, 4, 3, 2, 1, 4, 3, 2, 1}; // BE s16[4][4]
+#else
 u8 lbl_3_data_21AD0[32] = {0, 4, 0, 4, 0, 3, 0, 3, 0, 4, 0, 3, 0, 2, 0, 2, 0, 4, 0, 3, 0, 2, 0, 1, 0, 4, 0, 3, 0, 2, 0, 1};
+#endif
 s16 lbl_3_data_21AF0[2] = {20, 0};
 f32 lbl_3_data_21AF4 = 0.2f;
 f32 lbl_3_data_21AF8[6] = {0.3f, 0.15f, -0.01f, 0.85f, 1.5f, 0.5f};
@@ -418,7 +434,7 @@ void fn_3_10768C(void) {
         g_GameLogic._125 = 1;
         break;
     case 1:
-        if (((MinigameTask*)g_Minigame._1E04)->_1A != 0) {
+        if (((MinigameTask*)MG_TASK_PTR)->_1A != 0) {
             changeScene(3, 6);
             g_GameLogic._125 = 2;
         }
@@ -1150,7 +1166,7 @@ void fn_3_109254(void) {
         }
         break;
     case 1:
-        if (((MinigameTask*)g_Minigame._1E04)->_18 != 0) {
+        if (((MinigameTask*)MG_TASK_PTR)->_18 != 0) {
             g_GameLogic.FrameCountOfCurrentAtBat_Copy = 0x1E;
             g_GameLogic._125 = 2;
         }
@@ -1162,7 +1178,7 @@ void fn_3_109254(void) {
                 g_GameLogic.FrameCountOfCurrentAtBat_Copy = 0;
                 g_GameLogic._125 = 3;
             } else if (c->newButtonInput & 0x1100) {
-                ((MinigameTask*)g_Minigame._1E04)->_1A = 1;
+                ((MinigameTask*)MG_TASK_PTR)->_1A = 1;
                 g_GameLogic._125 = 4;
             }
         }
@@ -1175,7 +1191,7 @@ void fn_3_109254(void) {
         }
         break;
     case 4:
-        if (g_Minigame._1E04 == NULL) {
+        if (MG_TASK_PTR == NULL) {
             g_GameLogic.FrameCountOfCurrentAtBat_Copy = 0;
             g_GameLogic._125 = 5;
         }
@@ -1972,6 +1988,9 @@ void fn_3_10C81C(void) {
                 a = g_Minigame._19E8[i]._0;
                 if (a != -1 && (a != g_Minigame._19E8[i]._2 || (s8)g_Minigame._19E8[i]._4 != g_Minigame.battingHandedness[i])) {
                     g_Minigame._19E8[i]._7 = 0;
+#ifdef TARGET_PC
+                    g_port_selLoading[i] = 1; // hidden only because the model is still loading
+#endif
                     if ((u16)g_Minigame._19D2[i] >= 0x14 || g_Minigame._19DE == 4) {
                         ents[n].port = i;
                         ents[n].timer = (u16)g_Minigame._19D2[i];
@@ -2023,11 +2042,32 @@ void fn_3_10C81C(void) {
             g_Minigame._1A1B = 1;
             fn_80011B64(index);
         }
+#ifdef TARGET_PC
+        {
+            extern int port_spani_trace_on(void);
+            extern void OSReport(const char*, ...);
+            static s32 s_loadPolls;
+            s_loadPolls++;
+            if (g_Minigame._19E8[cur]._3 >= 0) {
+                done = fn_80016710(g_Minigame._19E8[cur]._3, index);
+            } else {
+                done = fn_80016710(g_Minigame._19E8[cur]._0, index);
+            }
+            if (done != 0) {
+                if (port_spani_trace_on()) {
+                    OSReport("[charload] player %d char %d loaded after %d polls (frames)\n", (int)cur,
+                             (int)g_Minigame._19E8[cur]._0, (int)s_loadPolls);
+                }
+                s_loadPolls = 0;
+            }
+        }
+#else
         if (g_Minigame._19E8[cur]._3 >= 0) {
             done = fn_80016710(g_Minigame._19E8[cur]._3, index);
         } else {
             done = fn_80016710(g_Minigame._19E8[cur]._0, index);
         }
+#endif
         if (done != 0) {
             g_Minigame._19E8[cur]._2 = (u8)g_Minigame._19E8[cur]._3;
             g_Minigame._19E8[cur]._3 = -1;
@@ -2666,7 +2706,7 @@ void fn_3_10FDC8(void) {
             g_GameLogic._125 = 1;
             break;
         case 1:
-            if (((MinigameTask*)g_Minigame._1E04)->_1A != 0) {
+            if (((MinigameTask*)MG_TASK_PTR)->_1A != 0) {
                 changeScene(3, 6);
                 g_GameLogic._125 = 2;
             }
@@ -2791,6 +2831,9 @@ void fn_3_10E60C(void) {
         for (i = 0; i < 4; i++) {
             g_Minigame._19E8[i]._8 = (u8)g_Minigame._19E8[i]._7;
             g_Minigame._19E8[i]._7 = 1;
+#ifdef TARGET_PC
+            g_port_selLoading[i] = 0;
+#endif
         }
     }
     switch (g_GameLogic._125) {

@@ -1375,7 +1375,7 @@ void fn_3_5AE9C(void) {
     if (g_d_GameSettings.GameModeSelected == 6 || g_d_GameSettings.GameModeSelected == 7) {
         g_d_GameSettings.minigamesEnabled = 1;
     }
-    memset(&g_Minigame, 0, 0x1E2C);
+    memset(&g_Minigame, 0, sizeof(g_Minigame));
     g_Minigame.GameMode_MiniGame = 0;
     sndVolume(0x7F, 0xA, 0xFF);
     if (g_d_GameSettings.GameModeSelected == 6 || g_d_GameSettings.GameModeSelected == 7) {
@@ -4394,7 +4394,12 @@ s16 lbl_3_data_5D6C[134] = {
     0, 0,
 };
 f32 lbl_3_data_5E78[2] = {8.0f, 2.0f};
+#ifdef TARGET_PC
+// game_batter reads row 3, which on GameCube is the start of lbl_3_data_5E98.
+f32 lbl_3_data_5E80[4][2] = {{1.0f, 1.0f}, {1.0f, 0.8f}, {1.0f, 0.5f}, {-0.53f, 0.53f}};
+#else
 f32 lbl_3_data_5E80[3][2] = {{1.0f, 1.0f}, {1.0f, 0.8f}, {1.0f, 0.5f}};
+#endif
 f32 lbl_3_data_5E98[6] = {-0.53f, 0.53f, 1.05f, 0.5f, 0.7f, 0.0f}; // game_batter reads it as lbl_3_data_5E80[3]
 f32 lbl_3_data_5EB0[2] = {-0.4f, 0.4f};
 f32 lbl_3_data_5EB8[3] = {0.4f, 17.0f, 3.0f};
@@ -4414,8 +4419,12 @@ u8 lbl_3_data_5F50[12] = {20, 35, 40, 55, 255, 25, 38, 30, 55, 200, 0, 0};
 f32 lbl_3_data_5F5C[8] = {0.35f, 7.0f, 9.0f, 1.0f, 3.0f, 5.0f, 1.0f, 0.3f};
 s16 lbl_3_data_5F7C[10] = {80, 80, 55, 60, 70, 90, 35, 45, 60, 100};
 f32 lbl_3_data_5F90[12] = {240.0f, 0.998f, 0.5f, 0.35f, 0.2f, 0.35f, 0.03f, 0.05f, 0.0f, 0.0f, 0.99f, 0.99f};
+#ifdef TARGET_PC
+s16 lbl_3_data_5FC0[2] = {0, 50}; // [1] (star pitch pause) is lbl_3_data_5FC2 on GameCube
+#else
 s16 lbl_3_data_5FC0[1] = {0};
 s16 lbl_3_data_5FC2 = 50; // unreferenced
+#endif
 f32 lbl_3_data_5FC4[12] = {1.5f, 0.0f, 1.5f, 0.0f, 10.0f, 1.5f, 0.9f, 1.5f, 1.5f, 0.0f, 50.0f, 0.0f};
 BJStartSituation lbl_3_data_5FF4[2][4][2] = {
     {

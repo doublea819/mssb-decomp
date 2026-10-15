@@ -1,3 +1,8 @@
+#ifdef TARGET_PC
+#define FOLLOW_OBJ(e) PTR32_GET(struct ActorObject, (e)->u.follow.obj)
+#else
+#define FOLLOW_OBJ(e) ((e)->u.follow.obj)
+#endif
 #include "game/rep_3880.h"
 #include "game/UnknownHomes_Game.h"
 #include "main/file_800263FC.h"
@@ -27,6 +32,21 @@ typedef struct V3I {
 } V3I;
 
 // lbl_3_data_266A8 (0x14C): spark/trail parameters for the minigame-5 ring effect (fn_3_15767C).
+#ifdef PORT_LP64
+// PC: lbl_3_data_266A8 (3 floats) and lbl_3_data_266B4 (80 words) are separate objects here, and the
+// parameter structs hold 8-byte TexArchive pointers, so the GameCube block can't be overlaid. A
+// PC-layout copy is built from the original words on first use (port_effect266A8, end of file).
+typedef struct EffectData266A8 {
+    f32 scale[2];
+    ParticleParams5 sparks[3];
+    union {
+        ParticleParams8 trail;
+        u8 trailRaw[0x60]; // trail + trail.texIndex2 continuing into the 7 extra indices
+    };
+    s16 sparkTex[4][2];
+} EffectData266A8;
+static EffectData266A8* port_effect266A8(void);
+#else
 typedef struct EffectData266A8 {
     /*0x000*/ f32 scale[2];
     /*0x008*/ ParticleParams5 sparks[3];
@@ -34,6 +54,7 @@ typedef struct EffectData266A8 {
     /*0x120*/ s32 trailTex[7]; // continues trail.texIndex2
     /*0x13C*/ s16 sparkTex[4][2];
 } EffectData266A8; // size: 0x14C
+#endif
 
 // lbl_3_data_26894 (0x308), only the fields used here.
 typedef struct EffectData26894 {
@@ -63,6 +84,14 @@ extern const f64 lbl_3_rodata_39E8;
 extern s32 lbl_3_data_26D00[];
 extern void fn_8003403C(f32, f32);
 extern EffectBss32724 lbl_3_common_bss_32724;
+#ifdef PORT_LP64
+// textures[] live in the minigame asset block's own storage on PC (game/auto_00_0011D3AC_text.h).
+typedef struct { void* model; ShapeAnimPlayer anim; void* skin; TexArchive* textures[3]; void* animBanks[3]; } MinigameAssetPtrs3880;
+extern MinigameAssetPtrs3880 g_port_mgAssets;
+#define MG_ASSETS g_port_mgAssets
+#else
+#define MG_ASSETS lbl_3_common_bss_32724
+#endif
 extern s32 lbl_3_data_26D5C[];
 extern f32 lbl_3_data_21770[];
 extern s32 lbl_3_data_26E9C[];
@@ -87,7 +116,11 @@ extern Vec lbl_3_data_26E00[];
 extern const Vec lbl_3_rodata_3908;
 extern f32 lbl_3_data_266A8[];
 // lbl_3_data_266A8 and the tables after it, read through one pooled view (the original does the same).
+#ifdef PORT_LP64
+#define EFFECT266A8 (port_effect266A8())
+#else
 #define EFFECT266A8 ((EffectData266A8*)lbl_3_data_266A8)
+#endif
 extern s32* lbl_3_data_268E4[]; // spark parameter sets, then (from [6]) per-character V3I offsets
 extern u32 lbl_3_data_26B84[];
 extern f32 lbl_3_data_26B94[];
@@ -289,7 +322,7 @@ void fn_3_147778(Emitter* e, Vec* pos) {
         pos->y *= lbl_3_rodata_3948;
     }
     delay = 0;
-    e->tex = lbl_3_common_bss_32724.textures[2];
+    e->tex = MG_ASSETS.textures[2];
     p = e->particles;
     do {
         if (i < nA) {
@@ -452,19 +485,19 @@ void fn_3_1480E0(Particle* o) {
     GXWGFIFO_F32(v[0]);
     GXWGFIFO_F32(v[1]);
     GXWGFIFO_F32(v[2]);
-    GXWGFIFO_U32(o->color.rgba);
+    GXWGFIFO_U32(PCOLOR_GET(o->color));
     GXWGFIFO_F32(v[3]);
     GXWGFIFO_F32(v[4]);
     GXWGFIFO_F32(v[5]);
-    GXWGFIFO_U32(o->color.rgba);
+    GXWGFIFO_U32(PCOLOR_GET(o->color));
     GXWGFIFO_F32(v[6]);
     GXWGFIFO_F32(v[7]);
     GXWGFIFO_F32(v[8]);
-    GXWGFIFO_U32(o->color.rgba);
+    GXWGFIFO_U32(PCOLOR_GET(o->color));
     GXWGFIFO_F32(v[9]);
     GXWGFIFO_F32(v[10]);
     GXWGFIFO_F32(v[11]);
-    GXWGFIFO_U32(o->color.rgba);
+    GXWGFIFO_U32(PCOLOR_GET(o->color));
     GXSetCullMode(1);
     GXBegin(0x80, 0, 4);
     {
@@ -472,19 +505,19 @@ void fn_3_1480E0(Particle* o) {
     GXWGFIFO_F32(v[0]);
     GXWGFIFO_F32(v[1]);
     GXWGFIFO_F32(v[2]);
-    GXWGFIFO_U32(o->colorStep.all);
+    GXWGFIFO_U32(PCOLOR_WORD(o->colorStep, all));
     GXWGFIFO_F32(v[3]);
     GXWGFIFO_F32(v[4]);
     GXWGFIFO_F32(v[5]);
-    GXWGFIFO_U32(o->colorStep.all);
+    GXWGFIFO_U32(PCOLOR_WORD(o->colorStep, all));
     GXWGFIFO_F32(p[3]);
     GXWGFIFO_F32(p[4]);
     GXWGFIFO_F32(p[5]);
-    GXWGFIFO_U32(o->colorStep.all);
+    GXWGFIFO_U32(PCOLOR_WORD(o->colorStep, all));
     GXWGFIFO_F32(p[6]);
     GXWGFIFO_F32(p[7]);
     GXWGFIFO_F32(p[8]);
-    GXWGFIFO_U32(o->colorStep.all);
+    GXWGFIFO_U32(PCOLOR_WORD(o->colorStep, all));
     }
 }
 #endif
@@ -781,7 +814,7 @@ void fn_3_14A37C(Emitter* o, f32* v) {
     s32 i;
     f32 ang;
     f32 c;
-    o->tex = lbl_3_common_bss_32724.textures[2];
+    o->tex = MG_ASSETS.textures[2];
     p = o->particles;
     d = lbl_3_data_26E40;
     i = 0;
@@ -825,7 +858,7 @@ void fn_3_14A62C(f32* v) {
     f32 c;
     o = fn_80033A24((EmitterUpdateFn)fn_3_14A188, 0x80, 0, lbl_3_data_26E40[1], 1, 0x24);
     if (o != NULL) {
-        o->tex = lbl_3_common_bss_32724.textures[2];
+        o->tex = MG_ASSETS.textures[2];
         p = o->particles;
         d = lbl_3_data_26E40;
         i = 0;
@@ -871,7 +904,7 @@ void fn_3_14A90C(f32* v) {
     if (g_d_GameSettings.GameModeSelected == 7 && g_Minigame.GameMode_MiniGame == 3 && v != NULL) {
     o = fn_80033A24((EmitterUpdateFn)fn_3_14A188, 0x80, 0, lbl_3_data_26E40[1], 1, 0x24);
     if (o != NULL) {
-        o->tex = lbl_3_common_bss_32724.textures[2];
+        o->tex = MG_ASSETS.textures[2];
         p = o->particles;
         d = lbl_3_data_26E40;
         i = 0;
@@ -1036,7 +1069,7 @@ void fn_3_14B53C(Emitter* o, u32 n, Vec* pos) {
     s32 i;
     o->u.sweep.origin = *pos;
     i = 0;
-    o->tex = lbl_3_common_bss_32724.textures[2];
+    o->tex = MG_ASSETS.textures[2];
     o->u.sweep.total = n;
     o->u.sweep.left = n;
     PSVECSubtract((Vec*)lbl_3_data_26E00, &lbl_3_data_26E00[1], &d);
@@ -1193,7 +1226,7 @@ void fn_3_14BCB0(Emitter* o, f32* v, u8 flag) {
     f32 c;
     f32 r;
     f64 u;
-    o->tex = lbl_3_common_bss_32724.textures[2];
+    o->tex = MG_ASSETS.textures[2];
     n = 0;
     p = o->particles;
     d = (flag != 0) ? lbl_3_data_26DC4 : lbl_3_data_26D88;
@@ -1338,7 +1371,7 @@ u32 fn_3_14C4C8(Emitter* o) {
 void fn_3_14C79C(Emitter* a) {
     Particle* p;
     f32 f;
-    a->tex = lbl_3_common_bss_32724.textures[2];
+    a->tex = MG_ASSETS.textures[2];
     p = a->particles;
     p->texIndex = lbl_3_data_26D5C[0];
     p->uvFrame = 0;
@@ -1358,7 +1391,7 @@ void fn_3_14C830(void) {
     Particle* p;
     f32 f;
     if (a != NULL) {
-        a->tex = lbl_3_common_bss_32724.textures[2];
+        a->tex = MG_ASSETS.textures[2];
         p = a->particles;
         p->texIndex = lbl_3_data_26D5C[0];
         p->uvFrame = 0;
@@ -1381,7 +1414,7 @@ void fn_3_14C904(void) {
     if (g_d_GameSettings.GameModeSelected == 7 && g_Minigame.GameMode_MiniGame == 4) {
         a = fn_80033A24((EmitterUpdateFn)fn_3_14C4C8, 0x80, 0, lbl_3_data_26D5C[1], 1, 0xA);
         if (a != NULL) {
-            a->tex = lbl_3_common_bss_32724.textures[2];
+            a->tex = MG_ASSETS.textures[2];
             p = a->particles;
             p->texIndex = lbl_3_data_26D5C[0];
             p->uvFrame = 0;
@@ -1678,7 +1711,7 @@ void fn_3_14D44C(Emitter* a, u32 kind0) {
 
 void fn_3_14D6D4(Emitter* e) {
     Particle* p;
-    e->tex = lbl_3_common_bss_32724.textures[2];
+    e->tex = MG_ASSETS.textures[2];
     p = e->particles;
     do {
         p->colorStep.v[2] = 0;
@@ -1792,7 +1825,7 @@ void fn_3_14DF6C(Emitter* o, f32* v) {
     s32 n;
     s32 r;
     p = o->particles;
-    o->tex = lbl_3_common_bss_32724.textures[2];
+    o->tex = MG_ASSETS.textures[2];
     d = lbl_3_data_26CD0;
     do {
         p->texIndex = *d;
@@ -2103,7 +2136,7 @@ void fn_3_14F5A4(Emitter* o, s8 a) {
 void fn_3_14F8D0(Emitter* a) {
     Particle* p;
     u32 i = 0;
-    a->tex = lbl_3_common_bss_32724.textures[2];
+    a->tex = MG_ASSETS.textures[2];
     p = a->particles;
     do {
         p->uvOrder = 0;
@@ -2230,7 +2263,7 @@ static inline void respawn_1504EC(Emitter* o, Particle* p) {
     f32 y;
     f32 z;
     p->life = lbl_3_data_26C3C[6];
-    obj = o->u.follow.obj->actor->boneArray[lbl_3_data_26C3C[7]];
+    obj = FOLLOW_OBJ(o)->actor->boneArray[lbl_3_data_26C3C[7]];
     PSMTXIdentity(m);
     src = (f32*)obj->forwardMtx;
     x = src[3];
@@ -2293,7 +2326,7 @@ u32 fn_3_150940(Emitter* o) {
     if (lbl_80366158._28 != 0) {
         return 0;
     }
-    if (o->u.follow.obj->animateBones == 0) {
+    if (FOLLOW_OBJ(o)->animateBones == 0) {
         return 0;
     }
     fn_80033620(o);
@@ -2350,7 +2383,7 @@ void fn_3_151068(Emitter* a, Particle* o) {
     f32 x, y, z;
     s32* d = (s32*)lbl_3_data_26C3C;
     o->life = d[6];
-    obj = a->u.follow.obj->actor->boneArray[d[7]];
+    obj = FOLLOW_OBJ(a)->actor->boneArray[d[7]];
     PSMTXIdentity(m);
     mp = obj->forwardMtx;
     x = mp[0][3];
@@ -2376,8 +2409,12 @@ void fn_3_151204(Emitter* o, void* owner, Vec* pos) {
     f32 speed;
     i = 0;
     j = 0;
-    o->tex = lbl_3_common_bss_32724.textures[2];
+    o->tex = MG_ASSETS.textures[2];
+#ifdef TARGET_PC
+    PTR32_SET(o->u.follow.obj, owner);
+#else
     o->u.follow.obj = owner;
+#endif
     memcpy(&o->u.t1.pos.y, pos, sizeof(Vec));
     p = o->particles;
     do {
@@ -3099,7 +3136,7 @@ void fn_3_153F8C(Emitter* h, u32 a, u32 b, Vec* c) {
     i = 0;
     q = h->particles;
     pos = (f32*)c;
-    h->tex = lbl_3_common_bss_32724.textures[2];
+    h->tex = MG_ASSETS.textures[2];
     do {
         if (q->life == 0) {
             flag = i != 0;
@@ -3295,7 +3332,7 @@ void fn_3_1549F0(Emitter* a, s16 b, f32* pos, f32* rot) {
     Particle* o;
     u8 i = 0;
     o = a->particles;
-    a->tex = lbl_3_common_bss_32724.textures[2];
+    a->tex = MG_ASSETS.textures[2];
     do {
         o->u.follow.id = b;
         o->u.follow.pos = pos;
@@ -3342,7 +3379,7 @@ static inline void Inl1549F0(Emitter* a, s16 b, f32* pos, f32* rot) {
     Particle* o;
     u8 i = 0;
     o = a->particles;
-    a->tex = lbl_3_common_bss_32724.textures[2];
+    a->tex = MG_ASSETS.textures[2];
     do {
         o->u.follow.id = b;
         o->u.follow.pos = pos;
@@ -3558,7 +3595,7 @@ void fn_3_155C28(Emitter* a) {
     f32 rz;
     f64 t;
     o = a->particles;
-    a->tex = lbl_3_common_bss_32724.textures[2];
+    a->tex = MG_ASSETS.textures[2];
     do {
         o->delay = i++;
         o->texIndex = lbl_3_data_26BC0[0];
@@ -3610,7 +3647,7 @@ void fn_3_155F08(void) {
     a = fn_80033A24((EmitterUpdateFn)fn_3_1552AC, 0x80, 0, lbl_3_data_26BC0[1], 1, 0x1B);
     if (a != NULL) {
         o = a->particles;
-        a->tex = lbl_3_common_bss_32724.textures[2];
+        a->tex = MG_ASSETS.textures[2];
         i = 0;
         do {
             o->delay = i++;
@@ -3665,7 +3702,7 @@ void fn_3_156218(void) {
         a = fn_80033A24((EmitterUpdateFn)fn_3_1552AC, 0x80, 0, lbl_3_data_26BC0[1], 1, 0x1B);
         if (a != NULL) {
             o = a->particles;
-            a->tex = lbl_3_common_bss_32724.textures[2];
+            a->tex = MG_ASSETS.textures[2];
             i = 0;
             do {
                 o->delay = i++;
@@ -3763,7 +3800,7 @@ void fn_3_156548(u32 n, f32 x, f32 y, f32 z) {
             quad[3].y = trail.y - h;
             quad[3].z = trail.z;
             fn_800B2160(3);
-            arc = lbl_3_common_bss_32724.textures[1];
+            arc = MG_ASSETS.textures[1];
             fn_800B1468(quad, 0xFFFFFFFF, TEX_ARCHIVE_IMG(arc, 0));
             if (i >= 4) {
                 size = lbl_3_rodata_39A8 * (f32)(7 - i) * lbl_3_rodata_39F0 + lbl_3_rodata_39A8;
@@ -3780,7 +3817,7 @@ void fn_3_156548(u32 n, f32 x, f32 y, f32 z) {
             quad[3].x = trail.x + h;
             quad[3].y = trail.y - h;
             fn_800B2160(2);
-            arc = lbl_3_common_bss_32724.textures[1];
+            arc = MG_ASSETS.textures[1];
             fn_800B1468(quad, 0xFFFFFFFF, &arc->entries[arc->entries[(u8)(i + 1)].index]);
             break;
         }
@@ -3921,7 +3958,7 @@ void fn_3_156D04(u32 n, f32 x, f32 y, f32 z) {
             quad[3].z = trail.z;
             GXSetBlendMode(GX_BM_SUBTRACT, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
             if (lbl_3_bss_B858 != 0) {
-                arc = lbl_3_common_bss_32724.textures[1];
+                arc = MG_ASSETS.textures[1];
                 fn_3_156970(quad, 0xFFFFFFFF, TEX_ARCHIVE_IMG(arc, 0));
             }
             if (i >= 4) {
@@ -3939,7 +3976,7 @@ void fn_3_156D04(u32 n, f32 x, f32 y, f32 z) {
             quad[3].x = trail.x + h;
             quad[3].y = trail.y - h;
             GXSetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_DSTALPHA, GX_LO_CLEAR);
-            arc = lbl_3_common_bss_32724.textures[2];
+            arc = MG_ASSETS.textures[2];
             fn_3_156970(quad, colors[ci], TEX_ARCHIVE_IMG(arc, (u8)(i + 10)));
             break;
         }
@@ -3994,7 +4031,7 @@ void fn_3_1573AC(struct CharActor* o) {
     dir.z = lbl_3_rodata_392C;
     PSMTXMultVec(m, &dir, &dir);
     t = ((ParticleParams5**)lbl_3_data_268E4);
-    t[0]->tex = t[1]->tex = t[2]->tex = lbl_3_common_bss_32724.textures[2];
+    t[0]->tex = t[1]->tex = t[2]->tex = MG_ASSETS.textures[2];
     q = EFFECT266A8->sparkTex[0];
     q += o->index * 2;
     t[0]->texIndex = t[1]->texIndex = q[1];
@@ -4014,7 +4051,15 @@ void fn_3_157570(void) {
 // .text:0x00157588 size:0x68 mapped:0x8079661C
 #ifdef TARGET_PC
 // Called as an emitter update (s32(Emitter*)); see rep_1E08.c.
-static s32 fn_3_15767C_update(Emitter* e) { fn_3_15767C(); return 0; }
+static s32 fn_3_15767C_update(Emitter* e) {
+    // At the end of the minigame the owner drops lbl_3_bss_B850 while this emitter is still listed
+    // for a frame; the GameCube read the null pointer's fields from low RAM, PC faults. End it.
+    if (lbl_3_bss_B850 == NULL) {
+        return 1;
+    }
+    fn_3_15767C();
+    return 0;
+}
 #define FN_3_15767C_UPDATE fn_3_15767C_update
 #else
 #define FN_3_15767C_UPDATE (EmitterUpdateFn)fn_3_15767C
@@ -4080,7 +4125,7 @@ void fn_3_15767C(void) {
                 PSVECSubtract(tgt, &pos, &dir);
                 if (0.0f != PSVECMag(&dir)) {
                     s32 k = f->colorIdx;
-                    d->sparks[0].tex = d->sparks[1].tex = d->sparks[2].tex = lbl_3_common_bss_32724.textures[2];
+                    d->sparks[0].tex = d->sparks[1].tex = d->sparks[2].tex = MG_ASSETS.textures[2];
                     d->trail.tex = lbl_3_common_bss_35154.tex;
                     if (k <= 3 && k >= 0) {
                         s16* q = d->sparkTex[0];
@@ -4136,6 +4181,20 @@ f32 fn_3_15791C(s32 i) {
     return lbl_3_rodata_3A44 * r;
 }
 
+#ifdef TARGET_PC
+u32 fn_3_157AC4(Emitter* o);
+// fn_3_157DB8 (auto_00_00157DB8_text.c) with the real Emitter/Particle layout.
+void port_fn_3_157DB8(s32 count) {
+    Emitter* e = fn_80033A24((EmitterUpdateFn)fn_3_157AC4, 0x80, 0, 1, 1, 0x16);
+    if (e != NULL) {
+        e->u.seq.index = 0;
+        e->u.seq.count = count;
+        e->particles->texIndex = 0;
+        PCOLOR_SET(e->particles->color, 0xFFFFFFFF);
+    }
+}
+#endif
+
 // NONMATCHING 95%: wave code is fn_3_15791C inlined by hand (call keeps f3/f4 swapped); only the 38D0 Vec copy loads are scheduled above the prologue stores
 // .text:0x00157AC4 size:0x2F4 mapped:0x80796B58
 #if NONMATCHING
@@ -4177,7 +4236,7 @@ u32 fn_3_157AC4(Emitter* o) {
     p->pos.y = g_Minigame._1AE4 + dir.y + p->sizeY * EFFECT266A8->scale[1];
     p->pos.z = g_Minigame._1AE8 + dir.z;
     fn_8003403C(p->sizeX, p->sizeY);
-    fn_80033CC8(o->particles, lbl_3_common_bss_32724.textures[0]);
+    fn_80033CC8(o->particles, MG_ASSETS.textures[0]);
     if (lbl_80366158._28 == 0) {
         o->u.seq.index += 1;
     }
@@ -4213,6 +4272,49 @@ s32 lbl_3_data_266B4[80] = {
     50000, 550000, 0, 0, 12, 13, 14, 15,
     16, 17, 18, 19, 720906, 983054, 1114128, 851980,
 }; // particle parameters (x100000 fixed point), reached from lbl_3_data_266A8
+#ifdef PORT_LP64
+// GameCube block = lbl_3_data_266A8[3] ++ lbl_3_data_266B4[80] (83 words):
+//   w0-1 scale, w2/22/42 sparks[k] (tex + 19 words), w62 trail (tex + 9 words, the last being
+//   texIndex2[0]), w72-78 texIndex2[1..7], w79-82 sparkTex (s16 pairs, big-endian halves).
+static EffectData266A8* port_effect266A8(void) {
+    static EffectData266A8 s_eff;
+    static int s_init;
+    if (!s_init) {
+        u32 w[83];
+        s32 k;
+        s32 i;
+        s32* t;
+        s_init = 1;
+        memcpy(w, lbl_3_data_266A8, 3 * sizeof(u32));
+        memcpy(w + 3, lbl_3_data_266B4, 80 * sizeof(u32));
+        memcpy(&s_eff.scale[0], &w[0], sizeof(f32));
+        memcpy(&s_eff.scale[1], &w[1], sizeof(f32));
+        for (k = 0; k < 3; k++) {
+            s_eff.sparks[k].tex = NULL; // w[2 + 20k] == 0; set at run time
+            t = &s_eff.sparks[k].texIndex;
+            for (i = 0; i < 19; i++) {
+                t[i] = (s32)w[2 + 20 * k + 1 + i];
+            }
+        }
+        s_eff.trail.tex = NULL; // w[62] == 0
+        t = &s_eff.trail.texIndex;
+        for (i = 0; i < 9; i++) {
+            t[i] = (s32)w[63 + i];
+        }
+        t = s_eff.trail.texIndex2;
+        for (i = 1; i < 8; i++) {
+            t[i] = (s32)w[71 + i];
+        }
+        for (i = 0; i < 4; i++) {
+            s_eff.sparkTex[i][0] = (s16)(w[79 + i] >> 16);
+            s_eff.sparkTex[i][1] = (s16)(w[79 + i] & 0xFFFF);
+        }
+    }
+    return &s_eff;
+}
+_Static_assert(sizeof(((EffectData266A8*)0)->trailRaw) >= offsetof(ParticleParams8, texIndex2) + 8 * sizeof(s32),
+               "trail indices must fit");
+#endif
 s32 lbl_3_data_267F4[20] = {
     0, 10, 3, 100000, 30000, 10000, 12, 8,
     110000, 50000, 0, 60, 4500000, 20000000, 0, 2000000,

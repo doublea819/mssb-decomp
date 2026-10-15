@@ -2495,7 +2495,11 @@ typedef struct _MiniGameStruct {
     /*0x1D40*/ f32 _1D40;
     /*0x1D44*/ f32 _1D44;
     /*0x1D48*/ f32 _1D48;
+#ifdef TARGET_PC
+    /*0x1D4C*/ PTR32(f32) starDashRelated_0_5Or1_5; // 4 bytes on PC too: keeps the GameCube layout for the minigame views
+#else
     /*0x1D4C*/ f32* starDashRelated_0_5Or1_5; // points at the speed multiplier (0.5 or 1.5)
+#endif
     /*0x1D50*/ s16 _1D50;
     /*0x1D52*/ s16 _1D52;
     /*0x1D54*/ s16 _1D54;
@@ -2536,7 +2540,11 @@ typedef struct _MiniGameStruct {
     };
     /*0x1E02*/ u8 _1E02;
     /*0x1E03*/ u8 _1E03;
+#ifdef TARGET_PC
+    /*0x1E04*/ PTR32(void) _1E04; // minigame task; PTR32 keeps the GameCube layout
+#else
     /*0x1E04*/ void* _1E04; // minigame task (fn_800B0A5C_insertQueue result)
+#endif
     /*0x1E08*/ MiniGameResultSlot resultSlot[4];
     /*0x1E10*/ s16 _1E10[6]; // per minigame mode (1..6): last score
     /*0x1E1C*/ u8 _1E1C[6];  // queued minigame modes, indexed by _1E2A
@@ -2545,6 +2553,9 @@ typedef struct _MiniGameStruct {
     /*0x1E2A*/ u8 _1E2A;    // round counter
     /*0x1E2B*/ u8 _1E2B;
 } MiniGameStruct; // size: 0x1E2C
+#ifdef TARGET_PC
+_Static_assert(sizeof(MiniGameStruct) == 0x1E2C, "MiniGameStruct must keep its GameCube layout (minigame views overlay it)");
+#endif
 
 extern MiniGameStruct g_Minigame;
 

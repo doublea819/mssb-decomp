@@ -43,6 +43,13 @@ typedef void (*C2ObjFn)(struct C2Obj* p);
 #define C2OBJ_BITS90 u8 visible : 1; u8 hasShadow : 1; u8 bit5 : 1; u8 bits : 5;
 #endif
 
+// 0x88: a header pointer on PC (StadiumObj.postDraw), unused by these views.
+#ifdef PORT_LP64
+#define C2OBJ_88 /*0x88*/ void* _88;
+#else
+#define C2OBJ_88 /*0x88*/ u8 _88[4];
+#endif
+
 // Common head of the 0xE8-byte stadium objects (lbl_3_common_bss_350E4.objs; as PiranhaPlant in game/rep_2998.h).
 #define C2OBJ_HEAD \
     /*0x00*/ GameControl ctrl; \
@@ -52,7 +59,7 @@ typedef void (*C2ObjFn)(struct C2Obj* p);
     /*0x7C*/ C2ObjFn update; \
     /*0x80*/ void (*onHit)(s32 idx, s32 hitType, struct _CollisionStruct* hit); \
     /*0x84*/ C2ObjFn preDraw; \
-    /*0x88*/ u8 _88[4]; \
+    C2OBJ_88 \
     /*0x8C*/ void* _8C; \
     C2OBJ_BITS90 \
     /*0x91*/ u8 _91; \
@@ -71,12 +78,15 @@ typedef void (*C2ObjFn)(struct C2Obj* p);
 
 // Any stadium object; the 0xA0.. tail depends on the kind (C2Obj* below).
 typedef struct C2Obj {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ u8 _A0[0xE8 - 0xA0];
+    STADIUM_OBJ_END
 } C2Obj; // size: 0xE8
 
 // The object with the rope (fn_3_CBC18 / fn_3_D3F54 and their helpers).
 typedef struct C2ObjMain {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ Vec pos;
     /*0xAC*/ Vec _AC;
@@ -90,10 +100,12 @@ typedef struct C2ObjMain {
     /*0xCC*/ u8 _CC;
     /*0xCD*/ u8 _CD;
     /*0xCE*/ u8 _CE[0xE8 - 0xCE];
+    STADIUM_OBJ_END
 } C2ObjMain;
 
 // The companions animated by fn_3_D1848.
 typedef struct C2ObjComp {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ f32 time;
     /*0xA4*/ f32 speed;
@@ -101,20 +113,24 @@ typedef struct C2ObjComp {
     /*0xAC*/ u8 delay;
     /*0xAD*/ u8 _AD;
     /*0xAE*/ u8 _AE[0xE8 - 0xAE];
+    STADIUM_OBJ_END
 } C2ObjComp;
 
 // A rope link drawn between two chain nodes (fn_3_D1280).
 typedef struct C2ObjLink {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ Vec pos;
     /*0xAC*/ RopeNode* a;
     /*0xB0*/ RopeNode* b;
     /*0xB4*/ u8 _B4;
     /*0xB5*/ u8 _B5[0xE8 - 0xB5];
+    STADIUM_OBJ_END
 } C2ObjLink;
 
 // The spinning object (fn_3_D0918).
 typedef struct C2ObjSpin {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ Vec pos;
     /*0xAC*/ Quaternion rot;
@@ -127,10 +143,12 @@ typedef struct C2ObjSpin {
     /*0xD1*/ u8 _D1;
     /*0xD2*/ u8 _D2; // object index count when set up
     /*0xD3*/ u8 _D3[0xE8 - 0xD3];
+    STADIUM_OBJ_END
 } C2ObjSpin;
 
 // fn_3_D0284's object: the marker under a spinner.
 typedef struct C2ObjD0284 {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ C2ObjSpin* target;
     /*0xA4*/ f32 _A4;
@@ -142,31 +160,38 @@ typedef struct C2ObjD0284 {
     /*0xBC*/ f32 _BC;
     /*0xC0*/ u8 _C0;
     /*0xC1*/ u8 _C1[0xE8 - 0xC1];
+    STADIUM_OBJ_END
 } C2ObjD0284;
 
 // fn_3_D00D0's object: an effect attached to a C2ObjSpin.
 typedef struct C2ObjFx {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ C2ObjSpin* target;
     /*0xA4*/ C2ObjD0284* marker;
     /*0xA8*/ Emitter* emitter;
     /*0xAC*/ u8 _AC;
     /*0xAD*/ u8 _AD[0xE8 - 0xAD];
+    STADIUM_OBJ_END
 } C2ObjFx;
 
 // The props (fn_3_CFA8C).
 typedef struct C2ObjProp {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ s32 phase;
     /*0xA4*/ u8 _A4[0xE8 - 0xA4];
+    STADIUM_OBJ_END
 } C2ObjProp;
 
 // fn_3_CF930's object (hit reaction with a particle burst).
 typedef struct C2ObjHit {
+    STADIUM_OBJ_BEGIN
     C2OBJ_HEAD
     /*0xA0*/ Emitter* emitter;
     /*0xA4*/ u8 _A4;
     /*0xA5*/ u8 _A5[0xE8 - 0xA5];
+    STADIUM_OBJ_END
 } C2ObjHit;
 
 // Any of the above.
@@ -181,6 +206,12 @@ typedef union C2ObjAny {
     C2ObjProp prop;
     C2ObjHit hit;
 } C2ObjAny;
+
+#ifdef PORT_LP64
+// Every view indexes the object array at the generic StadiumObj stride.
+_Static_assert(sizeof(C2ObjAny) == STADIUM_OBJ_SIZE, "C2Obj stride");
+_Static_assert(__builtin_offsetof(C2Obj, idx) == STADIUM_OBJ_PAD(0x9C), "C2Obj.idx");
+#endif
 
 // One entry of the stadium draw order built by fn_3_D55EC.
 typedef struct C2SortEnt {

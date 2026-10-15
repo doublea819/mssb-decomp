@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+extern void port_trace_value(const char* tag, int value);
+#define MGTRACE(tag, v) port_trace_value(tag, (int)(v))
+#else
+#define MGTRACE(tag, v) ((void)0)
+#endif
 #include "game/rep_34B0.h"
 #define REP_HEADER_FN repHeader_34B0
 #include "header_rep_inline.h"
@@ -607,6 +613,9 @@ void fn_3_130A80(void) {
 
 // .text:0x00130ACC size:0x1A0 mapped:0x8076FB60
 void fn_3_130ACC(void) {
+    MGTRACE("bb.ballsLeft", g_Minigame.bB_pitchesRemainingInTurn);
+    MGTRACE("bb.pitcherState", g_Pitcher.pitcherActionState);
+    MGTRACE("bb.turnOver", g_Minigame.turnOverStatus);
     if (g_Minigame.turnOverStatus == 0) {
         if (g_Pitcher.pitcherActionState == 4) {
             if (g_Minigame.bB_pitchesRemainingInTurn == 0) {

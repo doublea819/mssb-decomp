@@ -19,6 +19,22 @@ typedef struct MinigameCoinSprite {
 
 // View of lbl_8036E548 (CharMgr in main/file_80011640.h), only the fields used here.
 // A character actor placed on the result screen (CharActor in main/file_80011640.h).
+#ifdef PORT_LP64
+// PC: CharActor starts with pointers, so pos/rot/mode sit later (checked against CharActor in
+// auto_00_000DEB90_text.c). The GameCube offsets wrote the coordinates over part/parts.
+typedef union MinigameActorView {
+    struct {
+        u8 _000[0x68];
+        VecXYZ pos;  // CharActor.pos
+        f32 _40;     // CharActor.rot.x
+        f32 rotY;    // CharActor.rot.y
+    };
+    struct {
+        u8 _000b[0x295];
+        u8 visible;  // CharActor.mode[0]
+    };
+} MinigameActorView;
+#else
 typedef struct MinigameActorView {
     /*0x000*/ u8 _000[0x34];
     /*0x034*/ VecXYZ pos;
@@ -27,6 +43,7 @@ typedef struct MinigameActorView {
     /*0x048*/ u8 _048[0x25D - 0x48];
     /*0x25D*/ u8 visible;
 } MinigameActorView;
+#endif
 
 #ifdef PORT_LP64 // offsets for 64-bit pointers (wasm32 uses the GameCube layout)
 typedef union {

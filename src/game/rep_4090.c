@@ -231,15 +231,25 @@ void fn_3_16CC2C(Vec* pos, u8 who) {
 #endif
 
 // .text:0x0016D4D8 size:0x10C mapped:0x807AC56C
+#ifdef TARGET_PC
+#include "main/file_80011640.h" // CharMgr lbl_8036E548: on PC its fields aren't at the GameCube offsets
+#else
 extern u8 lbl_8036E548[];
+#endif
+#ifndef TARGET_PC
 extern s32 fn_8001B728(u8 a, s32 b, Vec* v);
+#endif
 
 s32 fn_3_16D4D8(s32 id_, f32 x) {
     u8 id = id_;
     f32 neg;
     Vec v = {0.0f, 0.0f, 0.0f};
+#ifdef TARGET_PC
+    if (lbl_8036E548.active[id]->_276 & 6) { return 1; }
+#else
     u8** pp = (u8**)(lbl_8036E548 + 0x2C50);
     if (pp[id][0x276] & 6) { return 1; }
+#endif
     fn_8001B728(id, 0x23, &v);
     neg = -v.y;
     v.z = 0.0f; v.y = 0.0f; v.x = 0.0f;

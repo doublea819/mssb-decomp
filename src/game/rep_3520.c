@@ -1,3 +1,8 @@
+#ifdef TARGET_PC
+#define MG_STARDASH_PTR PTR32_GET(f32, g_Minigame.starDashRelated_0_5Or1_5)
+#else
+#define MG_STARDASH_PTR (g_Minigame.starDashRelated_0_5Or1_5)
+#endif
 #include "game/rep_3520.h"
 #include "game/rep_1838.h"
 #include "game/rep_540.h"
@@ -1398,11 +1403,19 @@ void fn_3_13688C(Obj136* o) {
                 fn_800115C8((s8)sel);
                 g_Minigame._1D6D = -1;
             }
+#ifdef TARGET_PC
+            PTR32_SET(g_Minigame.starDashRelated_0_5Or1_5, &lbl_3_data_21AF8[5]);
+#else
             g_Minigame.starDashRelated_0_5Or1_5 = &lbl_3_data_21AF8[5];
+#endif
             fn_3_90064(0x2F5);
             fn_3_1695A4((s8)sel, 0);
         } else {
+#ifdef TARGET_PC
+            PTR32_SET(g_Minigame.starDashRelated_0_5Or1_5, &lbl_3_data_21AF8[4]);
+#else
             g_Minigame.starDashRelated_0_5Or1_5 = &lbl_3_data_21AF8[4];
+#endif
             fn_3_90064(0x2F6);
             fn_3_16C394(sel);
         }
@@ -2705,7 +2718,7 @@ void fn_3_13A0AC(void) {
         fn_3_14E988(4);
         if ((s8)g_Minigame.playerIDWithPowerup[0] == sel) {
             fn_800115C8((s8)sel);
-            if (g_Minigame.starDashRelated_0_5Or1_5 == &lbl_3_data_21AF8[5]) {
+            if (MG_STARDASH_PTR == &lbl_3_data_21AF8[5]) {
                 ((s8*)g_Minigame.playerIDWithPowerup)[0] = -1;
             }
         }

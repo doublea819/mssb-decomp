@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+extern void port_trace_value(const char* tag, int value);
+#define MGTRACE(tag, v) port_trace_value(tag, (int)(v))
+#else
+#define MGTRACE(tag, v) ((void)0)
+#endif
 #include "game/rep_3448.h"
 #define MINIGAME_CHECK_AI_INPUT_DEFINED
 #include "game/UnknownHomes_Game.h"
@@ -3568,13 +3574,13 @@ void fn_3_127B68(void) {
     s16 diff;
     s16 step;
     if (q->state >= 6) {
-        g_Minigame._1E04 = NULL; // the minigame task (this one) is gone
+        g_Minigame._1E04 = 0; // the minigame task (this one) is gone
         fn_80034CEC(q);
         REMOVE_QUEUE_NOARG();
         return;
     }
     if (g_GameLogic.gameStatus != 0x24) {
-        g_Minigame._1E04 = NULL;
+        g_Minigame._1E04 = 0;
         fn_80034CEC(q);
         REMOVE_QUEUE_NOARG();
         return;
@@ -3793,11 +3799,19 @@ rem:
 // .text:0x00128B90 size:0x88 mapped:0x80767C24
 void fn_3_128B90(void) {
     RepTask* q = REP_TASK;
+#ifdef TARGET_PC
+    u8* tb = lbl_3_data_B140; // BE u16 pairs
+    u32 i = g_Minigame.GameMode_MiniGame;
+    u16 v = (u16)((tb[i * 4] << 8) | tb[i * 4 + 1]);
+    lbl_3_data_B0E0[0].animId = v;
+    lbl_3_data_B0E0[1].animId = (u16)((tb[i * 4 + 2] << 8) | tb[i * 4 + 3]);
+#else
     u16* tb = (u16*)lbl_3_data_B140;
     u32 i = g_Minigame.GameMode_MiniGame;
     u16 v = tb[i * 2];
     lbl_3_data_B0E0[0].animId = v;
     lbl_3_data_B0E0[1].animId = tb[i * 2 + 1];
+#endif
     fn_80034E20(q, lbl_3_data_B0E0);
     q->state = 1;
     REP_TASK->func = (void (*)(void))fn_3_128A38;
@@ -3816,6 +3830,10 @@ void fn_3_128C18(void) {
     Vec pos;
     int sx;
     int sy;
+    MGTRACE("res.gameStatus", g_GameLogic.gameStatus);
+    MGTRACE("res.hudOff[0x96]", lbl_3_common_bss_32724[0x96]);
+    MGTRACE("res.show[0xB8]", lbl_3_common_bss_32724[0xB8]);
+    MGTRACE("res.sub[34C90+0x1D2]", lbl_3_common_bss_34C90[0x1D2]);
     if (lbl_3_common_bss_32724[0x96] != 0) {
         goto remove;
     }

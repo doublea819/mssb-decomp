@@ -1,0 +1,281 @@
+From 428c42d199e75f14b0100559d94f98558f0fa1da Mon Sep 17 00:00:00 2001
+From: Alex Arnowitz <alexander.arnowitz@gmail.com>
+Date: Thu, 15 Oct 2026 16:54:33 +0000
+Subject: [PATCH] MSSB port: native blocking pipelines, texture-size guard,
+ frame dump
+
+- pipeline_cache: native draws wait for their pipeline instead of being
+  skipped (AURORA_ASYNC_PIPELINES=1 restores skipping).
+- GXInitTexObj/CI: log and substitute 1x1 for 0 or >1024 texture sizes.
+- aurora_set_frame_dump_id + MSSB_FRAME_DUMP: read back marked frames to
+  PPM files for debugging visual glitches.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01GicfYcRfoFJtdTzMQVGDjR
+---
+ include/aurora/aurora.h      |   2 +
+ lib/aurora.cpp               | 118 ++++++++++++++++++++++++++++++++++-
+ lib/dolphin/gx/GXTexture.cpp |  35 +++++++++++
+ lib/gfx/pipeline_cache.cpp   |  10 +++
+ 4 files changed, 164 insertions(+), 1 deletion(-)
+
+diff --git a/include/aurora/aurora.h b/include/aurora/aurora.h
+index 92b734f..a3a5f94 100644
+--- a/include/aurora/aurora.h
++++ b/include/aurora/aurora.h
+@@ -131,6 +131,8 @@ void aurora_shutdown();
+ const AuroraEvent* aurora_update();
+ bool aurora_begin_frame();
+ void aurora_end_frame();
++/** Debug: capture the next ended frame to $MSSB_FRAME_DUMP/f<id>.ppm (id < 0: none). */
++void aurora_set_frame_dump_id(int id);
+ 
+ void aurora_set_log_level(AuroraLogLevel level);
+ void aurora_set_pause_on_focus_lost(bool value);
+diff --git a/lib/aurora.cpp b/lib/aurora.cpp
+index 2a2907b..700c4bb 100644
+--- a/lib/aurora.cpp
++++ b/lib/aurora.cpp
+@@ -28,6 +28,13 @@
+ #include <SDL3/SDL_filesystem.h>
+ #include <magic_enum.hpp>
+ 
++#include <algorithm>
++#include <atomic>
++#include <cstdio>
++#include <cstdlib>
++#include <thread>
++#include <vector>
++
+ #include "system_info.hpp"
+ #include "tracy/Tracy.hpp"
+ 
+@@ -45,6 +52,105 @@ using webgpu::g_device;
+ using webgpu::g_queue;
+ using webgpu::g_surface;
+ 
++// MSSB_FRAME_DUMP=<dir>: the game marks frames to capture (aurora_set_frame_dump_id); each marked
++// frame's EFB is read back after submit and written as <dir>/f<id>.ppm (debugging visual glitches).
++std::atomic<int> g_frameDumpId{-1};
++
++struct FrameDump {
++  wgpu::Buffer buffer;
++  uint32_t width = 0;
++  uint32_t height = 0;
++  uint32_t stride = 0;
++  bool bgra = false;
++  int id = -1;
++};
++
++FrameDump encode_frame_dump(const wgpu::CommandEncoder& encoder, int id) {
++  FrameDump dump;
++  if (id < 0) {
++    return dump;
++  }
++  const auto& src = webgpu::present_source();
++  const auto fmt = src.format;
++  if (fmt == wgpu::TextureFormat::BGRA8Unorm || fmt == wgpu::TextureFormat::BGRA8UnormSrgb) {
++    dump.bgra = true;
++  } else if (fmt != wgpu::TextureFormat::RGBA8Unorm && fmt != wgpu::TextureFormat::RGBA8UnormSrgb) {
++    static bool warned = false;
++    if (!warned) {
++      warned = true;
++      Log.warn("Frame dump: unsupported framebuffer format {}", magic_enum::enum_name(fmt));
++    }
++    return dump;
++  }
++  dump.width = src.size.width;
++  dump.height = src.size.height;
++  dump.stride = (dump.width * 4 + 255) & ~255u;
++  const wgpu::BufferDescriptor desc{
++      .label = "Frame dump readback",
++      .usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst,
++      .size = static_cast<uint64_t>(dump.stride) * dump.height,
++  };
++  dump.buffer = g_device.CreateBuffer(&desc);
++  const wgpu::TexelCopyTextureInfo srcInfo{.texture = src.texture};
++  const wgpu::TexelCopyBufferInfo dstInfo{
++      .layout = wgpu::TexelCopyBufferLayout{.offset = 0, .bytesPerRow = dump.stride, .rowsPerImage = dump.height},
++      .buffer = dump.buffer,
++  };
++  const wgpu::Extent3D size{.width = dump.width, .height = dump.height, .depthOrArrayLayers = 1};
++  encoder.CopyTextureToBuffer(&srcInfo, &dstInfo, &size);
++  dump.id = id;
++  return dump;
++}
++
++void write_frame_dump(FrameDump& dump) {
++  if (dump.id < 0 || !dump.buffer) {
++    return;
++  }
++  const char* dir = getenv("MSSB_FRAME_DUMP");
++  if (dir == nullptr || dir[0] == '\0') {
++    return;
++  }
++  std::atomic<int> state{0};
++  const uint64_t byteSize = static_cast<uint64_t>(dump.stride) * dump.height;
++  dump.buffer.MapAsync(wgpu::MapMode::Read, 0, byteSize, wgpu::CallbackMode::AllowProcessEvents,
++                       [&state](wgpu::MapAsyncStatus status, wgpu::StringView) {
++                         state.store(status == wgpu::MapAsyncStatus::Success ? 1 : 2);
++                       });
++  while (state.load() == 0) {
++    webgpu::g_instance.ProcessEvents();
++    std::this_thread::yield();
++  }
++  if (state.load() == 1) {
++    const auto* px = static_cast<const uint8_t*>(dump.buffer.GetConstMappedRange(0, byteSize));
++    if (px != nullptr) {
++      // Downscale (nearest) to at most 320 pixels wide to keep the files small.
++      const uint32_t step = std::max(1u, (dump.width + 319) / 320);
++      const uint32_t ow = dump.width / step;
++      const uint32_t oh = dump.height / step;
++      std::vector<uint8_t> out(static_cast<size_t>(ow) * oh * 3);
++      for (uint32_t y = 0; y < oh; ++y) {
++        const uint8_t* row = px + static_cast<size_t>(y * step) * dump.stride;
++        for (uint32_t x = 0; x < ow; ++x) {
++          const uint8_t* p = row + static_cast<size_t>(x * step) * 4;
++          uint8_t* o = &out[(static_cast<size_t>(y) * ow + x) * 3];
++          o[0] = dump.bgra ? p[2] : p[0];
++          o[1] = p[1];
++          o[2] = dump.bgra ? p[0] : p[2];
++        }
++      }
++      char path[1024];
++      snprintf(path, sizeof(path), "%s/f%06d.ppm", dir, dump.id);
++      if (FILE* f = fopen(path, "wb")) {
++        fprintf(f, "P6\n%u %u\n255\n", ow, oh);
++        fwrite(out.data(), 1, out.size(), f);
++        fclose(f);
++      }
++    }
++    dump.buffer.Unmap();
++  }
++  dump.buffer = {};
++}
++
+ uint32_t clamp_scissor_coord(double value, uint32_t maximum) noexcept {
+   if (!std::isfinite(value)) {
+     return 0;
+@@ -287,7 +393,8 @@ void end_frame() noexcept {
+   }
+ #endif
+ 
+-  gfx::end_frame([rmlBindGroup = std::move(rmlBindGroup), rmlOverlay, viewport,
++  const int frameDumpId = g_frameDumpId.exchange(-1);
++  gfx::end_frame([rmlBindGroup = std::move(rmlBindGroup), rmlOverlay, viewport, frameDumpId,
+                   imguiDrawData = std::move(imguiDrawData)](
+                      wgpu::CommandEncoder& encoder, std::vector<gfx::AfterSubmitCallback> afterSubmitCallbacks) {
+     wgpu::Texture currentTexture;
+@@ -368,6 +475,7 @@ void end_frame() noexcept {
+     } else {
+       Log.info("Skipping present; window not presentable");
+     }
++    FrameDump frameDump = encode_frame_dump(encoder, frameDumpId);
+     webgpu::gpu_prof::frame_end(encoder);
+     const wgpu::CommandBufferDescriptor cmdBufDescriptor{.label = "Redraw command buffer"};
+     const auto buffer = encoder.Finish(&cmdBufDescriptor);
+@@ -376,6 +484,7 @@ void end_frame() noexcept {
+       g_queue.Submit(1, &buffer);
+     }
+     webgpu::gpu_prof::after_submit();
++    write_frame_dump(frameDump);
+     if (canPresent && g_surface) {
+       ZoneScopedN("Present");
+       wgpu::ConvertibleStatus status = wgpu::Status::Error;
+@@ -459,6 +568,13 @@ AuroraInfo aurora_initialize(int argc, char* argv[], const AuroraConfig* config)
+ }
+ void aurora_shutdown() { aurora::shutdown(); }
+ const AuroraEvent* aurora_update() { return aurora::update(); }
++void aurora_set_frame_dump_id(int id) {
++#ifdef AURORA_ENABLE_GX
++  aurora::g_frameDumpId.store(id);
++#else
++  (void)id;
++#endif
++}
+ bool aurora_begin_frame() { return aurora::begin_frame(); }
+ void aurora_end_frame() { aurora::end_frame(); }
+ SDL_Window* aurora_get_window() { return aurora::window::get_sdl_window(); }
+diff --git a/lib/dolphin/gx/GXTexture.cpp b/lib/dolphin/gx/GXTexture.cpp
+index 04f97f5..4858f07 100644
+--- a/lib/dolphin/gx/GXTexture.cpp
++++ b/lib/dolphin/gx/GXTexture.cpp
+@@ -102,15 +102,50 @@ void emit_loaded_tlut_metadata(const GXTlutObj_& obj, u32 idx) {
+ } // namespace
+ 
+ extern "C" {
++
++#if defined(__APPLE__) || defined(__linux__)
++#include <dlfcn.h>
++#endif
++#include <cstdio>
++// MSSB port: a texture over 1024 texels can't exist on the GameCube; it means the game read a
++// texture header through a mis-laid-out struct. Metal aborts on such sizes, so report the caller
++// and use a 1x1 texture instead.
++static bool port_check_tex_size(u16& width, u16& height, void* caller) {
++  if (width <= 1024 && height <= 1024 && width != 0 && height != 0) {
++    return true;
++  }
++  static int s_reports;
++  if (s_reports < 20) {
++    ++s_reports;
++    const char* name = "?";
++#if defined(__APPLE__) || defined(__linux__)
++    Dl_info info;
++    if (caller != nullptr && dladdr(caller, &info) && info.dli_sname != nullptr) {
++      name = info.dli_sname;
++    }
++#endif
++    std::fprintf(stderr, "[port] GXInitTexObj: bad size %ux%u from %s (%p)\n", width, height, name, caller);
++  }
++  width = 1;
++  height = 1;
++  return false;
++}
++
+ void GXInitTexObj(GXTexObj* obj_, const void* data, u16 width, u16 height, GXTexFmt format, GXTexWrapMode wrapS,
+                   GXTexWrapMode wrapT, GXBool mipmap) {
+   auto* obj = reinterpret_cast<GXTexObj_*>(obj_);
++  if (!port_check_tex_size(width, height, __builtin_return_address(0))) {
++    mipmap = GX_FALSE;
++  }
+   init_texobj_common(*obj, data, width, height, format, wrapS, wrapT, mipmap);
+ }
+ 
+ void GXInitTexObjCI(GXTexObj* obj_, const void* data, u16 width, u16 height, GXCITexFmt format, GXTexWrapMode wrapS,
+                     GXTexWrapMode wrapT, GXBool mipmap, u32 tlut) {
+   auto* obj = reinterpret_cast<GXTexObj_*>(obj_);
++  if (!port_check_tex_size(width, height, __builtin_return_address(0))) {
++    mipmap = GX_FALSE;
++  }
+   init_texobj_common(*obj, data, width, height, format, wrapS, wrapT, mipmap);
+   obj->tlut = static_cast<GXTlut>(tlut);
+   obj->flags &= ~2u;
+diff --git a/lib/gfx/pipeline_cache.cpp b/lib/gfx/pipeline_cache.cpp
+index 7f9bbd0..b95a391 100644
+--- a/lib/gfx/pipeline_cache.cpp
++++ b/lib/gfx/pipeline_cache.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "pipeline_cache.hpp"
+ 
+ #include "clear.hpp"
+@@ -483,6 +484,15 @@ static PipelineRef find_pipeline_impl(PipelineRef runtimeKey, NewPipelineCallbac
+                                       PipelinePriority priority = PipelinePriority::Normal,
+                                       AsyncPipelineCallback&& createAsync = {}) {
+   ZoneScoped;
++#ifndef __EMSCRIPTEN__
++  // Native: a draw waits for its pipeline instead of being skipped. Skipped draws flicker (objects
++  // missing for the frames the pipeline thread needs); a first-use compile on a desktop GPU is a few
++  // ms, and the persistent cache makes it a one-time cost. AURORA_ASYNC_PIPELINES=1 restores skipping.
++  static const bool s_asyncPipelines = getenv("AURORA_ASYNC_PIPELINES") != nullptr;
++  if (priority == PipelinePriority::Normal && !s_asyncPipelines) {
++    priority = PipelinePriority::Blocking;
++  }
++#endif
+ #ifdef __EMSCRIPTEN__
+   if (priority == PipelinePriority::Normal) {
+     priority = PipelinePriority::Blocking;
+-- 
+2.34.1
+

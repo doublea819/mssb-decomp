@@ -119,10 +119,15 @@ extern f64 pow(f64, f64);
 extern f64 sqrt(f64);
 extern s16 fn_3_B7F70(s16 range);
 struct StadCtlA {
+    STADIUM_OBJ_BEGIN
     Control c;
     u8 pad34[0x74 - 0x3C];
     ActorObject* obj;
+#ifdef PORT_LP64
+    void* pad78[6]; /* six header pointers, 0x78-0x8C */
+#else
     u8 pad78[0x90 - 0x78];
+#endif
 #ifdef TARGET_PC // bitfields in MWCC (big-endian) bit order
     u8 fl90_lo : 7;
     u8 fl90_hi : 1;
@@ -137,7 +142,13 @@ struct StadCtlA {
     u8 pad9D[3];
     f32 xa0, ya4, za8, xac, zb0, rb4;
     f32 fb8; /* 0xB8 */
+#ifdef PORT_LP64
+    /* 0xBC holds yawSrc on GameCube; the other views of these objects use the bytes
+       right after it (0xC0..), so the 8-byte PC pointer lives past the GameCube tail. */
+    u32 yawSrcSlot; /* 0xBC */
+#else
     f32* yawSrc; /* 0xBC */
+#endif
     u8 fc0;
     s8 fc1;
     s8 fc2;
@@ -146,6 +157,11 @@ struct StadCtlA {
     u8 fc5;
     u8 fc6;
     u8 fc7;
+#ifdef PORT_LP64
+    u8 padC8[0xE8 - 0xC8];
+    f32* yawSrc;
+#endif
+    STADIUM_OBJ_END
 };
 typedef struct StadCtlA StadCtlA;
 extern Vec lbl_3_bss_B260[]; /* bezier control points */
@@ -156,6 +172,7 @@ struct SortEnt {
 };
 /* Common header of a 0xE8-byte stadium object (lbl_3_common_bss_350E4 objs). */
 typedef struct StadObjHdr {
+    STADIUM_OBJ_BEGIN
     Control c;                 /* 0x00 */
     u8 pad3C[0x74 - 0x3C];
     ActorObject* actorObj;     /* 0x74 */
@@ -197,13 +214,22 @@ typedef struct StadObjHdr {
     u8 kind;                   /* 0x9D */
     u8 pad9E[2];
     struct StadObjHdr* link;   /* 0xA0: paired object (kind-specific) */
-    u8 padA4[0xC5 - 0xA4];
+#ifdef PORT_LP64
+    /* 0xC5 holds the id on GameCube, but the carts' 8-byte pointers push their velocity over
+       that byte on PC, so the id lives past the GameCube tail (written by the group setup). */
+    u8 padA8[0xE8 - 0xA0 - sizeof(struct StadObjHdr*) + 0x18]; /* past StadCtlA.yawSrc too */
+    u8 id;
+#else
+    u8 padA4[0xC5 - 0xA0 - sizeof(struct StadObjHdr*)];
     u8 id;                     /* 0xC5 */
     u8 padC6[0xE8 - 0xC6];
+#endif
+    STADIUM_OBJ_END
 } StadObjHdr;
 /* One 0xE8-byte stadium object of this stadium (lbl_3_common_bss_350E4.objs): the common
    header (as StadObjHdr) and the per-kind state at 0xA0. */
 typedef struct StaC5Obj {
+    STADIUM_OBJ_BEGIN
     /*0x00*/ Control c;
     /*0x3C*/ u8 pad3C[0x74 - 0x3C];
     /*0x74*/ ActorObject* actorObj;
@@ -263,13 +289,25 @@ typedef struct StaC5Obj {
         } cart;
     } u;
     /*0xCC*/ u8 padCC[0xE8 - 0xCC];
-} StaC5Obj; // size: 0xE8
+    STADIUM_OBJ_END
+} StaC5Obj; // size: 0xE8 (PC: STADIUM_OBJ_SIZE)
 /* Stadium object that carries a linked StadCtlA (fn_3_F46A0 / fn_3_F5C30). */
 typedef struct StadObjB {
+    STADIUM_OBJ_BEGIN
     Control c;                         /* 0x00 */
+#ifdef PORT_LP64
+    u8 pad3C[0x74 - 0x3C];
+    void* p74[2];                      /* 0x74, 0x78 */
+#else
     u8 pad3C[0x7C - 0x3C];
+#endif
     void (*update)(struct StadObjB* p); /* 0x7C */
+#ifdef PORT_LP64
+    void* p80[4];                      /* 0x80-0x8C */
+    u8 pad90[0x99 - 0x90];
+#else
     u8 pad80[0x99 - 0x80];
+#endif
     u8 f99;                            /* 0x99 */
     u8 pad9A[2];
     u8 idx;                            /* 0x9C */
@@ -281,8 +319,28 @@ typedef struct StadObjB {
     f32 yaw;                           /* 0xC0 */
     u8 state;                          /* 0xC4 */
     u8 padC5[0xE8 - 0xC5];
+    STADIUM_OBJ_END
 } StadObjB;
 /* View of this file's pooled .bss starting at lbl_3_bss_AEE0 (several labelled objects). */
+#ifdef PORT_LP64
+_Static_assert(sizeof(StaC5Obj) == STADIUM_OBJ_SIZE, "StaC5Obj stride");
+_Static_assert(sizeof(StadObjHdr) == STADIUM_OBJ_SIZE, "StadObjHdr stride");
+_Static_assert(sizeof(StadObjB) == STADIUM_OBJ_SIZE, "StadObjB stride");
+_Static_assert(sizeof(StadCtlA) == STADIUM_OBJ_SIZE, "StadCtlA stride");
+_Static_assert(__builtin_offsetof(StaC5Obj, update) == 0x88, "StaC5Obj.update");
+_Static_assert(__builtin_offsetof(StaC5Obj, idx) == STADIUM_OBJ_PAD(0x9C), "StaC5Obj.idx");
+_Static_assert(__builtin_offsetof(StaC5Obj, u) == STADIUM_OBJ_PAD(0xA0), "StaC5Obj.u");
+_Static_assert(__builtin_offsetof(StadObjB, update) == 0x88, "StadObjB.update");
+_Static_assert(__builtin_offsetof(StadObjB, link) == __builtin_offsetof(StaC5Obj, u.cart.link), "StadObjB.link");
+_Static_assert(__builtin_offsetof(StadObjB, state) == __builtin_offsetof(StaC5Obj, u.cart.state), "StadObjB.state");
+_Static_assert(__builtin_offsetof(StadObjHdr, link) == STADIUM_OBJ_PAD(0xA0), "StadObjHdr.link");
+_Static_assert(__builtin_offsetof(StadObjHdr, id) >= sizeof(((StaC5Obj*)0)->u) + __builtin_offsetof(StaC5Obj, u), "StadObjHdr.id past the tails");
+_Static_assert(__builtin_offsetof(StadObjHdr, id) >= __builtin_offsetof(StadCtlA, yawSrc) + sizeof(void*), "StadObjHdr.id past StadCtlA.yawSrc");
+_Static_assert(__builtin_offsetof(StadCtlA, idx) == STADIUM_OBJ_PAD(0x9C), "StadCtlA.idx");
+_Static_assert(__builtin_offsetof(StadCtlA, xa0) == STADIUM_OBJ_PAD(0xA0), "StadCtlA.xa0");
+_Static_assert(__builtin_offsetof(StadCtlA, fc0) == STADIUM_OBJ_PAD(0xC0), "StadCtlA.fc0");
+_Static_assert(__builtin_offsetof(StadCtlA, fc6) == __builtin_offsetof(StaC5Obj, u.walk.state), "StadCtlA.fc6");
+#endif
 typedef struct StaC5Work {
     /*0x000*/ u8 pad0;
     /*0x001*/ u8 cartBusy;
@@ -366,6 +424,24 @@ typedef struct StaC5Data {
     /*0x25C*/ Vec windVel;
 } StaC5Data;
 extern StaC5Work lbl_3_bss_AEE0;
+#ifdef TARGET_PC
+/* These labels are fields of lbl_3_bss_AEE0 on GameCube. On PC the struct has its own
+   layout and the gen file gives each label separate storage, so route them through the struct. */
+#define lbl_3_bss_AEE8 (lbl_3_bss_AEE0._008)
+#define lbl_3_bss_AF04 (&lbl_3_bss_AEE0.wobAmp)
+#define lbl_3_bss_AF18 ((s8*)lbl_3_bss_AEE0.indTex)
+#define lbl_3_bss_B118 (&lbl_3_bss_AEE0.indTexImage)
+#define lbl_3_bss_B218 (&lbl_3_bss_AEE0.b218)
+#define lbl_3_bss_B219 (&lbl_3_bss_AEE0.b219)
+#define lbl_3_bss_B21A (lbl_3_bss_AEE0.b21A)
+#define lbl_3_bss_B21B (lbl_3_bss_AEE0.b21B)
+#define lbl_3_bss_B21C (lbl_3_bss_AEE0.b21C)
+#define lbl_3_bss_B21D (&lbl_3_bss_AEE0.b21D)
+#define lbl_3_bss_B21E (&lbl_3_bss_AEE0.b21E)
+#define lbl_3_bss_B21F (lbl_3_bss_AEE0.b21F)
+#define lbl_3_bss_B220 (&lbl_3_bss_AEE0.b220)
+#define lbl_3_bss_B55C (lbl_3_bss_AEE0.actor67C)
+#endif
 extern StaC5Data lbl_3_data_1B820;
 extern StadiumObjList lbl_3_common_bss_350E4;
 extern InMemFielderType g_Fielders[9];
@@ -767,7 +843,19 @@ void fn_3_EEF24(void) {
         fn_800BDA24(lbl_3_bss_B55C);
         fn_3_EE388();
         fn_3_EEB94();
+#ifdef TARGET_PC
+        {
+            /* lbl_3_data_1BA5C holds two 8-byte draw nodes {next, func = fn_3_EEE3C} (the func
+               is a REL relocation, so the generated bytes are 0). The PC node is pointer-sized
+               (DrawCallbackNode, main/video_system.h), so keep real nodes here. */
+            typedef struct { uintptr_t next; void (*func)(void* node); } StaC5DrawNode;
+            static StaC5DrawNode sDrawNodes[2] = {
+                {0, (void (*)(void*))fn_3_EEE3C}, {0, (void (*)(void*))fn_3_EEE3C}};
+            fn_800A7D4C(1, &sDrawNodes[lbl_803CBBC0[0]]);
+        }
+#else
         fn_800A7D4C(1, lbl_3_data_1BA5C + lbl_803CBBC0[0] * 8);
+#endif
     }
 }
 
@@ -1012,7 +1100,11 @@ u32 fn_3_EF7B4(V3i v, s32 x) {
 #pragma dont_inline off
 // .text:0x000EF800 size:0x90 mapped:0x8072E894
 void fn_3_EF800(StaC5Obj* p) {
+#ifdef TARGET_PC // MWCC bit order: f is the top bit (StadiumObj.visible)
+    typedef struct { u8 pad[STADIUM_OBJ_PAD(0x90)]; u8 rest : 7; u8 f : 1; } FObj;
+#else
     typedef struct { u8 pad[0x90]; u8 f : 1; u8 rest : 7; } FObj;
+#endif
     if (p->u.walk.timer == 0) {
         CTRLSetTranslation((Control*)p, p->u.walk.pos.x, lbl_3_rodata_2DEC, p->u.walk.pos.z);
         return;
@@ -1231,8 +1323,12 @@ void fn_3_F0184(void) {
 
 // .text:0x000F0224 size:0x608 mapped:0x8072F2B8
 extern char lbl_3_rodata_2D00[];
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_B21B;
+#endif
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_B21C;
+#endif
 extern const f64 lbl_3_rodata_2E18;
 extern const f32 lbl_3_rodata_2E20;
 /* Chases the fielder p->fc1; bites when close enough. */
@@ -1721,12 +1817,17 @@ void fn_3_F1E2C(StadCtlA* p) {
 // .text:0x000F22FC size:0x14C mapped:0x80731390
 extern int fn_3_253A4(s8, s16);
 extern s16 fn_3_9FB8C(f32, f32);
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_B21B;
+#endif
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_B21C;
+#endif
 extern const f32 lbl_3_rodata_2E40;
 extern const f32 lbl_3_rodata_2D54;
 typedef struct {
-    u8 p0[0xAC];
+    STADIUM_OBJ_BEGIN
+    u8 p0[STADIUM_OBJ_PAD(0xAC)];
     f32 a;
     f32 p1[2];
     f32 b8;
@@ -1736,6 +1837,7 @@ typedef struct {
     u8 p3[4];
     u8 c6;
     u8 p4[0xE8 - 0xC7];
+    STADIUM_OBJ_END
 } StObjE8;
 void fn_3_F22FC(StaC5Obj* p, s32 idx) {
     Vec d;
@@ -2142,7 +2244,11 @@ void fn_3_F3AE0(StaC5Obj* p) {
 #pragma dont_inline off
 // .text:0x000F3BB0 size:0x120 mapped:0x80732C44
 void fn_3_F3BB0(StaC5Obj* p) {
+#ifdef TARGET_PC // MWCC bit order: f is the top bit (StadiumObj.visible)
+    typedef struct { u8 pad[STADIUM_OBJ_PAD(0x90)]; u8 rest : 7; u8 f : 1; } FObj;
+#else
     typedef struct { u8 pad[0x90]; u8 f : 1; u8 rest : 7; } FObj;
+#endif
     f32 rot, x, z;
     p->u.prop._AC = lbl_3_data_1B884[p->idx].v.x;
     p->u.prop._B0 = lbl_3_data_1B884[p->idx].v.z;
@@ -2210,7 +2316,9 @@ s32 fn_3_F3CD0(struct Emitter* em) {
 
 #pragma dont_inline off
 // .text:0x000F3EFC size:0x3A4 mapped:0x80732F90
+#ifndef TARGET_PC
 extern u32 lbl_3_bss_B560[];
+#endif
 extern const f32 lbl_3_rodata_2E90;
 extern const f32 lbl_3_rodata_2DEC;
 extern const f64 lbl_3_rodata_2DF8;
@@ -2223,7 +2331,11 @@ void fn_3_F3EFC(struct Emitter* em) {
     Particle* e;
     u8 i;
     e = a->particles;
+#ifdef TARGET_PC
+    a->tex = (TexArchive*)lbl_3_bss_AEE0.file680;
+#else
     *(u32*)(&a->tex) = lbl_3_bss_B560[0];
+#endif
     i = 0;
     for (; e != NULL; e = e->next) {
         e->sizeX = e->sizeY = lbl_3_rodata_2E30;
@@ -2384,8 +2496,12 @@ extern const f32 lbl_3_rodata_2EF0;
 extern const f64 lbl_3_rodata_2EF8;
 extern const f32 lbl_3_rodata_2F00;
 extern const f32 lbl_3_rodata_2F04;
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_B21F;
+#endif
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_B220[];
+#endif
 void fn_3_F4DAC(void) {
     Vec v;
     Vec n;
@@ -2889,8 +3005,12 @@ void fn_3_F6938(s32* n) {
     u16 k;
     StaC5Obj* e;
     void* o;
+#ifndef TARGET_PC
     extern u8 lbl_3_bss_B21F;
+#endif
+#ifndef TARGET_PC
     extern u8 lbl_3_bss_B220[];
+#endif
     extern f32 lbl_3_rodata_2F40[];
     for (i = 0; i < lbl_3_bss_B220[0]; i++) {
         k = lbl_3_common_bss_350E4.groupStart[*n - 1] + lbl_3_common_bss_350E4.groupCount[*n - 1];
@@ -2919,8 +3039,12 @@ void fn_3_F6A94(s32* n) {
     u16 k;
     u32 off;
     void* o;
+#ifndef TARGET_PC
     extern u8 lbl_3_bss_B21D[];
+#endif
+#ifndef TARGET_PC
     extern u8 lbl_3_bss_B21E[];
+#endif
     extern f32 lbl_3_rodata_2F44[];
     extern f32 lbl_3_rodata_2F48[];
     extern f32 lbl_3_rodata_2F4C[];
@@ -2982,7 +3106,9 @@ void fn_3_F6C60(void) {
 #endif
 
 // .text:0x000F6FCC size:0x10 mapped:0x80736060
+#ifndef TARGET_PC
 extern u8 lbl_3_bss_AEE8;
+#endif
 
 void fn_3_F6FCC(void) {
     lbl_3_bss_AEE8 = 1;
@@ -3099,10 +3225,18 @@ void fn_3_F6FDC(void** files) {
     fn_80025EEC(&w->anim280, 0, 0);
 
     list->count = 0x19;
+#ifdef PORT_LP64
+    /* 25 stadium objects (0x16A8 = 25 * 0xE8 on GameCube) at the PC stride */
+    list->objs = _OSAllocFromHeap(0x20, 25 * STADIUM_OBJ_SIZE);
+    memset(list->objs, 0, 25 * STADIUM_OBJ_SIZE);
+    list->objsBackup = _OSAllocFromHeap(0x20, 25 * STADIUM_OBJ_SIZE);
+    memset(list->objsBackup, 0, 25 * STADIUM_OBJ_SIZE);
+#else
     list->objs = _OSAllocFromHeap(0x20, 0x16A8);
     memset(list->objs, 0, 0x16A8);
     list->objsBackup = _OSAllocFromHeap(0x20, 0x16A8);
     memset(list->objsBackup, 0, 0x16A8);
+#endif
     o = (StadObjHdr*)list->objs;
 
     /* group A: StadCtlA objects waiting at their spot */
@@ -3123,6 +3257,9 @@ void fn_3_F6FDC(void** files) {
             o->hasShadow = (o->visible && o->shadow != NULL) ? 1 : 0;
             p->idx = j;
             p->fc5 = n;
+#ifdef PORT_LP64
+            ((StadObjHdr*)p)->id = n; /* StadObjHdr.id is not fc5 on PC */
+#endif
             fn_3_F3BB0((StaC5Obj*)p);
             n++;
             o->depthSort = 1;

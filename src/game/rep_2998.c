@@ -204,7 +204,23 @@ void fn_3_E22A4(PiranhaPlant* p) {
     u8 st;
     u8 v;
     DisplayStateList* r;
+#ifdef TARGET_PC
+    {
+        // On PC a palette's descriptors hold display objects only after fn_800BCE38
+        // built them; otherwise they still hold layouts (see GeoPaletteHasDispObjs).
+        DODisplayDataPtr pal = p->actorObj->actor->pal;
+        DODescriptor* desc = PTR32_GET(DODescriptor, pal->descriptorArray);
+        DisplayData* dd;
+        if (GeoPaletteHasDispObjs(pal)) {
+            dd = PTR32_GET(struct DODisplayObj, desc[0].dispObj)->displayData;
+        } else {
+            dd = PTR32_GET(DisplayData, PTR32_GET(DODisplayLayout, desc[0].layout)->displayData);
+        }
+        r = PTR32_GET(DisplayStateList, dd->displayStateList);
+    }
+#else
     r = PTR32_GET(DisplayStateList, PTR32_GET(struct DODisplayObj, PTR32_GET(DODescriptor, p->actorObj->actor->pal->descriptorArray)[0].dispObj)->displayData->displayStateList);
+#endif
     r->setting &= ~0x1FFF;
     st = p->state;
     if (st != 0) {

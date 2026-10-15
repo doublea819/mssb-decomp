@@ -140,6 +140,54 @@ static int port_skip_movies(void) {
     }
     return s_skip;
 }
+
+// MSSB_MOVIE_STATS=1: once a second, how the movie keeps up. "clock" is the
+// audio clock (samplesPlayed) against wall time: below 1.00 the movie plays in
+// slow motion. "underruns" are AI periods MovMixAudio skipped because the
+// decoder had not produced the audio yet; "late" frames were dropped by the
+// decoder (and every P/B frame after one until the next I frame).
+static struct {
+    s32 on;
+    OSTime windowStart;
+    u64 samplesStart;
+    vu32 underruns;
+    u32 decoded, late, noSlot;
+} s_movStats = {-1};
+
+static void port_mov_stats(MovPlayer* mov) {
+    OSTime now;
+    u32 ms;
+
+    if (s_movStats.on < 0) {
+        const char* env = getenv("MSSB_MOVIE_STATS");
+        s_movStats.on = env != NULL && env[0] != '\0' && env[0] != '0';
+    }
+    if (!s_movStats.on || mov == NULL) {
+        return;
+    }
+    now = OSGetTime();
+    if (s_movStats.windowStart == 0) {
+        s_movStats.windowStart = now;
+        s_movStats.samplesStart = mov->samplesPlayed;
+        return;
+    }
+    ms = (u32)OSTicksToMilliseconds(now - s_movStats.windowStart);
+    if (ms < 1000) {
+        return;
+    }
+    OSReport("[movie] frame %u/%u clock %.2fx decoded %u late %u slot-waits %u underruns %u (avg decode %u us, %u us/frame)\n",
+             mov->curFrame, mov->numFrames,
+             mov->sampleRate != 0 && mov->samplesPlayed >= s_movStats.samplesStart
+                 ? (double)(mov->samplesPlayed - s_movStats.samplesStart) / (mov->sampleRate * 4.0) / (ms / 1000.0)
+                 : 0.0,
+             s_movStats.decoded, s_movStats.late, s_movStats.noSlot, s_movStats.underruns,
+             mov->decodedFrames != 0 ? mov->decodeTime / mov->decodedFrames : 0, mov->usecPerFrame);
+    s_movStats.windowStart = now;
+    s_movStats.samplesStart = mov->samplesPlayed;
+    s_movStats.underruns = 0;
+    s_movStats.decoded = s_movStats.late = s_movStats.noSlot = 0;
+}
+#define MOV_STAT(field) (s_movStats.field++)
 #endif
 
 // The HVQM4 stream is big-endian: on PC the headers are swapped into native
@@ -445,6 +493,9 @@ static inline void MovMixAudio(s16* buf) {
     }
     read = mov->audioRead;
     if (read < mov->audioWrite && (read + len > mov->audioWrite || (mov->state & 2))) {
+#ifdef TARGET_PC
+        MOV_STAT(underruns);
+#endif
         return;
     }
     off = 0;
@@ -693,7 +744,21 @@ void* MovDecodeThread(void* arg) {
         } else
 #endif
         lbl_803CC19C = fn_800AF1A8(mov);
+#ifdef TARGET_PC
+        port_mov_stats(mov);
+#endif
         switch (lbl_803CC19C) {
+#ifdef TARGET_PC
+        case 0:
+            // One record decoded. On the GameCube the retrace interrupt
+            // preempts this lowest-priority thread as soon as it wakes the
+            // game's threads; on PC a thread only switches at scheduling
+            // points, and this loop has none while frame slots are free, so it
+            // could hold the CPU for several frame decodes and make the main
+            // thread miss retraces (movie display and audio clock both stall).
+            OSYieldThread();
+            break;
+#endif
         case 1: // waiting for data
             MOV_YIELD();
             break;
@@ -834,6 +899,7 @@ s32 fn_800AF1A8(MovPlayer* mov) {
                 switch (fn_800AF5FC(mov, format, count)) {
                 case 2:
 #ifdef TARGET_PC
+                    MOV_STAT(noSlot);
                     OSYieldThread(); // waiting for a frame slot to be shown
 #endif
                     continue;
@@ -843,10 +909,16 @@ s32 fn_800AF1A8(MovPlayer* mov) {
                     }
                     mov->decodeTime += OSTicksToMicroseconds(OSGetTime() - start);
                     mov->decodedFrames++;
+#ifdef TARGET_PC
+                    MOV_STAT(decoded);
+#endif
                     break;
                 case 1:
                     return 1;
                 case 3:
+#ifdef TARGET_PC
+                    MOV_STAT(late);
+#endif
                     break;
                 }
                 break;

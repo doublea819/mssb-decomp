@@ -63,14 +63,9 @@ extern const MtxBox lbl_800E67C0; // identity
 extern const MtxBox lbl_800E682C; // identity
 extern const MtxBox lbl_800E67F0; // identity
 extern const MtxBox lbl_800E685C; // identity
-// A particle colour as GXColor1u32 wants it (0xRRGGBBAA). The trail code builds
-// the colour a byte at a time, so the bytes are r,g,b,a in memory; reading them
-// as a native u32 on a little-endian host sends a,b,g,r (opaque skid marks).
-#ifdef TARGET_PC
-#define PARTICLE_RGBA(col) (((u32)(col).v[0] << 24) | ((u32)(col).v[1] << 16) | ((u32)(col).v[2] << 8) | (u32)(col).v[3])
-#else
-#define PARTICLE_RGBA(col) ((col).rgba)
-#endif
+// A particle colour as GXColor1u32 wants it (0xRRGGBBAA): see PCOLOR_GET in
+// main/file_800263FC.h (colours keep the r,g,b,a byte order on PC).
+#define PARTICLE_RGBA(col) PCOLOR_GET(col)
 
 // Scratch for drawing type-4 trails.
 typedef struct TrailScratch {
@@ -288,7 +283,7 @@ static inline void DrawParticleQuad(Particle* p, TexArchive* arc, Vec* corner) {
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     for (i = 0; i < 4; i++) {
         GXPosition3f32(p->pos.x + corner[i].x, p->pos.y + corner[i].y, p->pos.z + corner[i].z);
-        GXColor1u32(p->color.rgba);
+        GXColor1u32(PCOLOR_GET(p->color));
         GXTexCoord2f32(lbl_800F7860[p->uvFrame + i].u, lbl_800F7860[p->uvFrame + i].v);
     }
 }
@@ -582,16 +577,16 @@ s32 fn_80026E58(Emitter* e) {
                 p->color.c.a = (s32)((f32)a * e->u.attract.intensity);
                 GXBegin(GX_QUADS, GX_VTXFMT0, 4);
                 GXPosition3f32(v.x - p->size, v.y - p->size, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(0.0f, 0.0f);
                 GXPosition3f32(v.x - p->size, v.y + p->size, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(0.0f, 1.0f);
                 GXPosition3f32(v.x + p->size, v.y + p->size, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(1.0f, 1.0f);
                 GXPosition3f32(v.x + p->size, v.y - p->size, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(1.0f, 0.0f);
                 p->life -= (lbl_80366158._28 == 0);
             } else {
@@ -652,13 +647,13 @@ void fn_80027300(Emitter* e, Vec* center, Vec* target, ParticleParamsAttract* pr
         p->t = tMin + (tRange * (f32)rand()) / 32767.0f;
         p->dt = dtMin + (dtRange * (f32)rand()) / 32767.0f;
         p->size = size;
-        p->color.rgba = prm->unk3C;
+        PCOLOR_SET(p->color, prm->unk3C);
         p->life0 = p->life = prm->unk10 + (lifeRange * rand()) / 32767;
         p->delay = prm->unk18 + (delayRange * rand()) / 32767;
         p->alphaMax = prm->unk30;
         p->fadeIn = prm->unk34;
         p->fadeOut = prm->unk38;
-        p->color.rgba = prm->unk3C;
+        PCOLOR_SET(p->color, prm->unk3C);
         p = (AttractParticle*)p->next;
     } while (p != NULL);
 }
@@ -790,7 +785,7 @@ s32 fn_80027968(Emitter* e) {
                 }
                 PSMTXMultVec(lbl_8017FFE0, &t, &lbl_8017EC00.pos[i]);
                 col.v[3] = (h->color.v[3] * (h->histCount - 1 - k)) / h->histCount;
-                lbl_8017EC00.color[i] = col.rgba;
+                lbl_8017EC00.color[i] = PCOLOR_GET(col);
                 lbl_8017EC00.width[i] = (w * (f32)(h->histCount - 1 - k)) / (f32)h->histCount;
                 i++;
             }
@@ -807,10 +802,10 @@ s32 fn_80027968(Emitter* e) {
                     GXTexCoord2f32(1.0f, 0.5f);
                 }
                 GXPosition3f32(c.x - w, c.y, c.z);
-                GXColor1u32(h->color.rgba);
+                GXColor1u32(PCOLOR_GET(h->color));
                 GXTexCoord2f32(0.0f, 0.5f);
                 GXPosition3f32(c.x + w, c.y, c.z);
-                GXColor1u32(h->color.rgba);
+                GXColor1u32(PCOLOR_GET(h->color));
                 GXTexCoord2f32(1.0f, 0.5f);
             } else {
                 for (i = 0; i < h->histCount; i++) {
@@ -822,26 +817,26 @@ s32 fn_80027968(Emitter* e) {
                     GXTexCoord2f32(1.0f, 0.5f);
                 }
                 GXPosition3f32(c.x, c.y - w, c.z);
-                GXColor1u32(h->color.rgba);
+                GXColor1u32(PCOLOR_GET(h->color));
                 GXTexCoord2f32(0.0f, 0.5f);
                 GXPosition3f32(c.x, c.y + w, c.z);
-                GXColor1u32(h->color.rgba);
+                GXColor1u32(PCOLOR_GET(h->color));
                 GXTexCoord2f32(1.0f, 0.5f);
             }
             // head sprite
             w = ((f32)h->unk52 / 100.0f) * 0.5f;
             GXBegin(GX_QUADS, GX_VTXFMT0, 4);
             GXPosition3f32(c.x - w, c.y - w, c.z);
-            GXColor1u32(h->color.rgba);
+            GXColor1u32(PCOLOR_GET(h->color));
             GXTexCoord2f32(0.0f, 0.0f);
             GXPosition3f32(c.x - w, c.y + w, c.z);
-            GXColor1u32(h->color.rgba);
+            GXColor1u32(PCOLOR_GET(h->color));
             GXTexCoord2f32(0.0f, 1.0f);
             GXPosition3f32(c.x + w, c.y + w, c.z);
-            GXColor1u32(h->color.rgba);
+            GXColor1u32(PCOLOR_GET(h->color));
             GXTexCoord2f32(1.0f, 1.0f);
             GXPosition3f32(c.x + w, c.y - w, c.z);
-            GXColor1u32(h->color.rgba);
+            GXColor1u32(PCOLOR_GET(h->color));
             GXTexCoord2f32(1.0f, 0.0f);
             if (spawn && e->u.t4.unk4F == idx % e->u.t4.unk4E && lbl_80366158._28 == 0) {
                 // emit sparks backwards from the tip
@@ -851,7 +846,7 @@ s32 fn_80027968(Emitter* e) {
                 col.v[1] = e->u.t4.unk55 + (e->u.t4.unk56 * h->color.v[1]) / 255;
                 col.v[2] = e->u.t4.unk55 + (e->u.t4.unk56 * h->color.v[2]) / 255;
                 sprm = (ParticleParams5*)e->u.t4.unk48;
-                sprm->unk40 = col.rgba;
+                sprm->unk40 = PCOLOR_GET(col);
                 fn_80030D88(&t, &c, sprm, 5);
                 e5 = FindEmitter(NULL, 5);
                 if (e5 != NULL) {
@@ -986,11 +981,19 @@ void fn_80028628(Vec* from, Vec* to, ParticleParams4* prm, TrailShape* shape, u3
             task->pad25 = 1;
         }
         // TODO type: an RGBA word stored at the unaligned 0x1E (r, g, b, alpha)
+#ifdef TARGET_PC // r, g, b, alpha bytes (PCOLOR_SET)
+        if (palette != NULL) {
+            port_rgba_set(&task->r, palette[ent->color]);
+        } else {
+            port_rgba_set(&task->r, Expand4444(ent->color));
+        }
+#else
         if (palette != NULL) {
             *(u32*)&task->r = palette[ent->color];
         } else {
             *(u32*)&task->r = Expand4444(ent->color);
         }
+#endif
         c = task->r + prm->unk44;
         if (c > 0xFF) {
             c = 0xFF;
@@ -1038,9 +1041,9 @@ void fn_80028628(Vec* from, Vec* to, ParticleParams4* prm, TrailShape* shape, u3
         head->unk4C = unk4C;
         head->unk52 = (s32)(100.0f * speed);
         if (palette != NULL) {
-            head->color.rgba = palette[ent->color];
+            PCOLOR_SET(head->color, palette[ent->color]);
         } else {
-            head->color.rgba = Expand4444(ent->color);
+            PCOLOR_SET(head->color, Expand4444(ent->color));
         }
         head->color.v[3] = prm->unk1C;
         head->unk56 = prm->unk20;
@@ -1159,16 +1162,16 @@ s32 fn_80028F48(Emitter* e) {
             sx = h * SinIdx(ang);
             GXBegin(GX_QUADS, GX_VTXFMT0, 4);
             GXPosition3f32(v.x + cx, v.y + sx, v.z);
-            GXColor1u32(p->color.rgba);
+            GXColor1u32(PCOLOR_GET(p->color));
             GXTexCoord2f32(0.0f, 0.0f);
             GXPosition3f32(v.x + sx, v.y - cx, v.z);
-            GXColor1u32(p->color.rgba);
+            GXColor1u32(PCOLOR_GET(p->color));
             GXTexCoord2f32(0.0f, 1.0f);
             GXPosition3f32(v.x - cx, v.y - sx, v.z);
-            GXColor1u32(p->color.rgba);
+            GXColor1u32(PCOLOR_GET(p->color));
             GXTexCoord2f32(1.0f, 1.0f);
             GXPosition3f32(v.x - sx, v.y + cx, v.z);
-            GXColor1u32(p->color.rgba);
+            GXColor1u32(PCOLOR_GET(p->color));
             GXTexCoord2f32(1.0f, 0.0f);
             p->life -= (lbl_80366158._28 == 0);
         }
@@ -1297,7 +1300,7 @@ void fn_800297F0(Emitter* e, Vec* pos, Vec* axis, ParticleParamsC* prm) {
         p->accel.z = 0.0f;
         p->accel.y = gravity;
         p->spin = p->angle = spinMin + (spinRange * (f32)rand()) / 32767.0f;
-        p->color.rgba = prm->unk30;
+        PCOLOR_SET(p->color, prm->unk30);
         p->alphaMax = alpha;
         p->fadeIn = prm->unk34;
         p->fadeOut = prm->unk38;
@@ -1362,16 +1365,16 @@ s32 fn_80029CC8(Emitter* e) {
                 PSVECSubtract(&v0, &t, &v3);
                 GXBegin(GX_QUADS, GX_VTXFMT0, 4);
                 GXPosition3f32(v0.x, v0.y, v0.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(0.0f, 1.0f);
                 GXPosition3f32(v1.x, v1.y, v1.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(0.0f, 0.0f);
                 GXPosition3f32(v2.x, v2.y, v2.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(1.0f, 0.0f);
                 GXPosition3f32(v3.x, v3.y, v3.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(1.0f, 1.0f);
             }
             p->life--;
@@ -1454,7 +1457,7 @@ void fn_8002A1CC(Vec* pos, ParticleParamsB* prm) {
         p->u.tB.sizeY = sizeYMin + (sizeYRange * (f32)rand()) / 32767.0f;
         p->u.tB.sizeXDelta = (endXMin + (endXRange * (f32)rand()) / 32767.0f) - p->u.tB.sizeX;
         p->u.tB.sizeYDelta = (endYMin + (endYRange * (f32)rand()) / 32767.0f) - p->u.tB.sizeY;
-        p->color.rgba = prm->color;
+        PCOLOR_SET(p->color, prm->color);
         p->colorStep.tB.alpha0 = p->color.c.a;
         p = p->next;
     } while (p != NULL);
@@ -1529,7 +1532,7 @@ u8 fn_8002AC68(Emitter* e, Particle* p) {
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
     for (i = 0; i < 4; i++) {
         GXPosition3f32(p->pos.x + c[i].x, p->pos.y + c[i].y, p->pos.z + c[i].z);
-        GXColor1u32(p->color.rgba);
+        GXColor1u32(PCOLOR_GET(p->color));
         GXTexCoord2f32(lbl_800F7860[p->uvFrame + i].u, lbl_800F7860[p->uvFrame + i].v);
     }
     a = p->color.c.a;
@@ -1830,7 +1833,7 @@ void fn_8002BC84(Emitter* e, Vec* pos, Vec* dir, ParticleParams5* prm) {
         p->u.t5.unk2C = prm->unk18 - prm->unk1C;
         p->u.t5.unk28 = ((f32)prm->unk14 / 100000.0f) *
                         (0.02 * lbl_803CB80C * (rand() % 256) * 0.00390625 + (1.0f - 0.01f * lbl_803CB80C));
-        p->color.rgba = prm->unk30;
+        PCOLOR_SET(p->color, prm->unk30);
         p->u.t5.unk30 = prm->unk28;
         p->u.t5.unk34 = 0.0f;
         p->colorStep.v[0] = 0;
@@ -1943,16 +1946,16 @@ s32 fn_8002C56C(Emitter* e) {
                 PSMTXMultVec(lbl_8017FFE0, &pos, &pos);
                 GXBegin(GX_QUADS, GX_VTXFMT0, 4);
                 GXPosition3f32(pos.x - p->sizeX, pos.y - p->sizeY, pos.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(lbl_800F78C0[p->uvOrder & 0xF].s, lbl_800F78C0[p->uvOrder & 0xF].t);
                 GXPosition3f32(pos.x + p->sizeY, pos.y - p->sizeX, pos.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(lbl_800F78C0[(p->uvOrder >> 4) & 0xF].s, lbl_800F78C0[(p->uvOrder >> 4) & 0xF].t);
                 GXPosition3f32(pos.x + p->sizeX, pos.y + p->sizeY, pos.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(lbl_800F78C0[(p->uvOrder >> 8) & 0xF].s, lbl_800F78C0[(p->uvOrder >> 8) & 0xF].t);
                 GXPosition3f32(pos.x - p->sizeY, pos.y + p->sizeX, pos.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(lbl_800F78C0[(p->uvOrder >> 12) & 0xF].s, lbl_800F78C0[(p->uvOrder >> 12) & 0xF].t);
             }
         }
@@ -2133,16 +2136,16 @@ s32 fn_8002D82C(Emitter* e) {
                 PSMTXMultVec(lbl_8017FFE0, &p->pos, &v);
                 GXBegin(GX_QUADS, GX_VTXFMT0, 4);
                 GXPosition3f32(v.x - p->sizeX, v.y - p->sizeY, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(uv[p->uvOrder & 3].s, uv[p->uvOrder & 3].t);
                 GXPosition3f32(v.x + p->sizeY, v.y - p->sizeX, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(uv[(p->uvOrder >> 2) & 3].s, uv[(p->uvOrder >> 2) & 3].t);
                 GXPosition3f32(v.x + p->sizeX, v.y + p->sizeY, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(uv[(p->uvOrder >> 4) & 3].s, uv[(p->uvOrder >> 4) & 3].t);
                 GXPosition3f32(v.x - p->sizeY, v.y + p->sizeX, v.z);
-                GXColor1u32(p->color.rgba);
+                GXColor1u32(PCOLOR_GET(p->color));
                 GXTexCoord2f32(uv[(p->uvOrder >> 6) & 3].s, uv[(p->uvOrder >> 6) & 3].t);
                 if (lbl_80366158._28 == 0) {
                     p->life--;
@@ -2503,7 +2506,7 @@ void fn_8002F5F4(Vec* pos, Vec* dir, ParticleParams8* prm) {
         }
         p->sizeY = size;
         p->sizeX = size;
-        p->color.rgba = (prm->gray << 24) | ((prm->gray << 8) | (prm->gray << 16)) | 0xFF;
+        PCOLOR_SET(p->color, (prm->gray << 24) | ((prm->gray << 8) | (prm->gray << 16)) | 0xFF);
         p->texIndex = prm->texIndex;
         p->uvFrame = 0;
         p->uvOrder = 1;
@@ -2513,7 +2516,7 @@ void fn_8002F5F4(Vec* pos, Vec* dir, ParticleParams8* prm) {
         p->pos.z = v.z;
         p->sizeY = size;
         p->sizeX = size;
-        p->color.rgba = (prm->gray << 24) | ((prm->gray << 8) | (prm->gray << 16)) | 0xFF;
+        PCOLOR_SET(p->color, (prm->gray << 24) | ((prm->gray << 8) | (prm->gray << 16)) | 0xFF);
         p->texIndex = prm->texIndex2[i];
         p->uvFrame = 0;
         p->uvOrder = 0;
@@ -2633,7 +2636,7 @@ void fn_8002FDB8(Emitter* e, Vec* pos, Vec* dir, Vec* velScale, ParticleParams5*
         p->u.t5.unk2C = prm->unk18 - prm->unk1C;
         p->u.t5.unk28 = ((f32)prm->unk14 / 100000.0f) *
                         (0.02 * lbl_803CB804 * (rand() % 256) * 0.00390625 + (1.0f - 0.01f * lbl_803CB804));
-        p->color.rgba = prm->unk40;
+        PCOLOR_SET(p->color, prm->unk40);
         p->u.t5.unk30 = prm->unk2C;
         p->u.t5.unk34 = (f32)prm->unk48 / 100000.0f;
         p->colorStep.v[0] = prm->unk4C;
@@ -2741,7 +2744,7 @@ void fn_80030720(Emitter* e, Vec* pos, Vec* dir, ParticleParams5* prm) {
         p->u.t5.unk2C = prm->unk18 - prm->unk1C;
         p->u.t5.unk28 = ((f32)prm->unk14 / 100000.0f) *
                         (0.02 * lbl_803CB800 * (rand() % 256) * 0.00390625 + (1.0f - 0.01f * lbl_803CB800));
-        p->color.rgba = prm->unk40;
+        PCOLOR_SET(p->color, prm->unk40);
         p->u.t5.unk30 = prm->unk2C;
         p->u.t5.unk34 = (f32)prm->unk48 / 100000.0f;
         p->colorStep.v[0] = prm->unk4C;
@@ -2958,7 +2961,7 @@ void fn_800317C4(Emitter* e, Vec* pos, ParticleParams5* prm) {
         p->u.t5.unk2C = prm->unk18 - prm->unk1C;
         p->u.t5.unk28 = ((f32)prm->unk14 / 100000.0f) *
                         (0.02 * lbl_803CB800 * (rand() % 256) * 0.00390625 + (1.0f - 0.01f * lbl_803CB800));
-        p->color.rgba = prm->unk40;
+        PCOLOR_SET(p->color, prm->unk40);
         p->u.t5.unk30 = prm->unk2C;
         p->u.t5.unk34 = (f32)prm->unk48 / 100000.0f;
         p->colorStep.v[0] = prm->unk4C;
@@ -3036,7 +3039,7 @@ void fn_80032064(Vec* pos, ParticleParamsB* prm) {
         p->pos.x = pos->x;
         p->pos.y = pos->y;
         p->pos.z = pos->z;
-        p->color.rgba = 0xFFFFFF00;
+        PCOLOR_SET(p->color, 0xFFFFFF00);
         p->u.t6.unk18 = tmpl->unk10;
         p->u.t6.unk1C = p->life = tmpl->life;
         p->u.t6.unk20 = tmpl->life / 2;
@@ -3070,7 +3073,7 @@ void fn_80032284(Vec* pos) {
         p->pos.x = pos->x;
         p->pos.y = pos->y;
         p->pos.z = pos->z;
-        p->color.rgba = 0xFFFFFF00;
+        PCOLOR_SET(p->color, 0xFFFFFF00);
         p->color.c.a = prm.unk10;
         p->u.t6.unk18 = prm.unk10;
         p->u.t6.unk1C = p->life = prm.life;
@@ -3123,7 +3126,7 @@ void fn_800324EC(u16 anim, s32 a, s32 b, ParticleParamsB* prm) {
         p->pos.x = pos.x;
         p->pos.y = pos.y;
         p->pos.z = pos.z;
-        p->color.rgba = 0xFFFFFF00;
+        PCOLOR_SET(p->color, 0xFFFFFF00);
         p->u.t6.unk18 = tmpl->unk10;
         p->u.t6.unk1C = p->life = tmpl->life;
         p->u.t6.unk20 = tmpl->life / 2;
@@ -3239,7 +3242,7 @@ s32 fn_800328E0(Emitter* e) {
             p->u.phys.vel.z = v.z;
             p->sizeX = e->u.t1.size;
             p->sizeY = e->u.t1.size;
-            p->color.rgba = e->u.t1.color;
+            PCOLOR_SET(p->color, e->u.t1.color);
             p->colorStep.all = 0;
             p->life = 2;
             p->delay = r & lbl_803CB7F8;
@@ -3502,7 +3505,7 @@ void fn_80033CC8(Particle* p, TexArchive* arc) {
     corner = lbl_80180010;
     for (i = 0; i < 4; i++) {
         GXPosition3f32(p->pos.x + corner[i].x, p->pos.y + corner[i].y, p->pos.z + corner[i].z);
-        GXColor1u32(p->color.rgba);
+        GXColor1u32(PCOLOR_GET(p->color));
         GXTexCoord2f32(lbl_800F7860[p->uvFrame + i].u, lbl_800F7860[p->uvFrame + i].v);
     }
 }
