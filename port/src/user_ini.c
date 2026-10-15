@@ -33,9 +33,19 @@ static char* trim(char* s)
     return s;
 }
 
+static char s_userPath[1024];
+
+// The user data folder (saves, user.ini, career.sav).
+const char* port_user_path(void)
+{
+    return s_userPath;
+}
+
 void port_user_ini_load(const char* userPath)
 {
     char path[1024];
+    if (userPath != NULL)
+        snprintf(s_userPath, sizeof(s_userPath), "%s", userPath);
     const char* env = getenv("MSSB_USER_INI");
     if (env != NULL)
         snprintf(path, sizeof(path), "%s", env);

@@ -1400,6 +1400,9 @@ void fn_3_5DA9C(void) {
             fn_8006C9D8();
         }
         fn_3_76558();
+#ifdef TARGET_PC
+        { extern void port_career_game_final(void); port_career_game_final(); }
+#endif
     }
     g_GameLogic._135 = 0;
     g_GameLogic._136 = 0;
@@ -2887,6 +2890,9 @@ void fn_3_6011C(void) {
                 fn_8006C9D8();
             }
             fn_3_76558();
+#ifdef TARGET_PC
+        { extern void port_career_game_final(void); port_career_game_final(); }
+#endif
         }
         g_GameLogic._135 = 0;
         g_GameLogic._136 = 0;

@@ -770,6 +770,9 @@ void fn_2_1DC8(void) {
     case 1:
         lbl_8034E9A0._4708 = 1;
         ((u8*)&g_d_GameSettings)[7] = 5;
+#ifdef TARGET_PC
+        changeScene(4, 6); // Career goes straight into a game, like Toy Field (port/game/career.c)
+#endif
         break;
     case 3:
         lbl_8034E9A0._4708 = 3;
@@ -3402,6 +3405,21 @@ void fn_2_1F30(void) {
         lbl_8034E9A0._4728 = g_d_GameSettings.GameModeSelected;
         lbl_8034E9A0._4729 = g_d_GameSettings._10;
         g_d_GameSettings.exhibitionMatchInd = 1;
+#ifdef TARGET_PC
+        if (g_d_GameSettings.GameModeSelected == 5) {
+            // Career Mode replaces Challenge (port/game/career.c): set up the next career game and
+            // load game.rel straight from here, as Toy Field and the minigames do.
+            extern BOOL port_career_setup_next_game(void);
+            port_career_setup_next_game();
+            fn_80062A74();
+            fn_2_1F30_unload();
+            fn_80021410();
+            fn_800ACFB0(lbl_800EF808.groups[37]);
+            fn_2_11A0(4);
+            lbl_2_bss_20[0] = 0;
+            break;
+        }
+#endif
         if (g_d_GameSettings.GameModeSelected == 0) {
             fn_2_11A0(9);
         } else if (g_d_GameSettings.GameModeSelected == 5) {

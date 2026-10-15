@@ -31,7 +31,7 @@ static s32 all_modes(void) {
 
 // Main menu entry `entry` can be picked.
 s32 port_menu_mode_enabled(s32 entry) {
-    return all_modes() || entry == 0 || entry == 4 || entry == 6;
+    return all_modes() || entry == 0 || entry == 1 || entry == 4 || entry == 6; // 1: Career (port/game/career.c)
 }
 
 // The row the main menu draws entry `entry` in (-1: hidden).
@@ -42,10 +42,12 @@ s32 port_menu_row(s32 entry) {
     switch (entry) {
     case 0:
         return 0; // Exhibition
+    case 1:
+        return 1; // Career (the Challenge entry)
     case 4:
-        return 1; // Practice
+        return 2; // Practice
     case 6:
-        return 2; // Options
+        return 3; // Options
     default:
         return -1;
     }
