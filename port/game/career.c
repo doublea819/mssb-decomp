@@ -2327,7 +2327,7 @@ static void draw_card(void) {
             box_item(2, 120, sRow == RC_REPLACE, "Replace", "%s", nm);
             box_item(3, 120, 0, "", "B%d P%d F%d S%d", bars[0], bars[1], bars[2], bars[3]);
         }
-        box_item(4, 120, 0, "Earned", "up to %s", sTierName[sCareer.recruitTier & 3]);
+        box_item(4, 120, 0, "Earned", "%s", sTierName[sCareer.recruitTier & 3]);
     } else if (sPage == PAGE_SETTINGS) {
         s32 inn = sCareer.innings >= 1 ? sCareer.innings : lbl_800E8754.innings;
         // Two lines centered between the logos and the bottom of the panel.
@@ -2424,18 +2424,19 @@ static void draw_card(void) {
     if (sPage == PAGE_FESTIVAL) {
         static const char* const kTop[4] = {"Generic", "Unique player", "Sub-captain", "Sub-captain"};
         s32 lvl = sCareer.festLevel & 3;
-        box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "Star Festival");
-        box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "Win: +%d points\nrecruit up to\n%s", lvl, kTop[lvl]);
+        ui_small(LOW_X, LOW_Y + 1, 0.85f, 15, UI_GOLD, "Star Festival");
+        ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "Win: +%d points\nrecruit up to\n%s", lvl, kTop[lvl]);
     } else if (sPage == PAGE_RECRUIT) {
         if (sProspN > 0) {
             char nm[32];
             char_label(sProsp[sProspAt], nm, sizeof(nm));
-            box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "%s", nm);
-            box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "%s\n%s\n%d of %d", sTierName[char_tier(sProsp[sProspAt])],
+            // Four lines: 85% text, 15 px apart, to fit the panel.
+            ui_small(LOW_X, LOW_Y + 1, 0.85f, 15, UI_GOLD, "%s", nm);
+            ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "%s\n%s\n%d of %d", sTierName[char_tier(sProsp[sProspAt])],
                      recruit_from(), sProspAt + 1, sProspN);
         } else {
-            box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "No one to sign");
-            box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "They're all on\nyour team.\nPass to clear");
+            ui_small(LOW_X, LOW_Y + 1, 0.85f, 15, UI_GOLD, "No one to sign");
+            ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "They're all on\nyour team.\nPass to clear");
         }
     } else if (sPage == PAGE_HUB && sConfirmLeave) {
         box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "Leave Career?");
