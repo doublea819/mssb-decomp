@@ -29,6 +29,12 @@ extern SpaniDrawState lbl_80366188;
 extern Mtx lbl_800F78E0[4];
 extern Mtx44 lbl_801F8640;
 extern Mtx44 lbl_801F8680;
+#ifdef TARGET_PC
+// PC: 32KB more sprite display list per buffer (Career Mode's menu text lives on layer 8).
+#define SPRITE_DL_POOL 0x2A800
+#else
+#define SPRITE_DL_POOL 0x22800
+#endif
 extern u8 lbl_801F86C0[];
 
 typedef struct SpaniStrings {
@@ -836,7 +842,7 @@ void fn_80036A3C(void) {
             break;
         }
     }
-    fn_800B2854(lbl_801F86C0, 0x45000, lbl_801F8680, 0, 23, modes, NULL);
+    fn_800B2854(lbl_801F86C0, 2 * SPRITE_DL_POOL, lbl_801F8680, 0, 23, modes, NULL);
     fn_800B27A4(10);
     for (i = 0xD; i < 23; i++) {
         fn_800B0D38(i, 2);
@@ -864,7 +870,7 @@ s32 fn_80036C88(s32* src, s32* dst) {
     for (i = 0; i < 23; i++) {
         sum += src[i];
     }
-    diff = 0x22800 - sum;
+    diff = SPRITE_DL_POOL - sum;
     if (diff < 0) {
         s32 excess = -diff;
         s32 take;
@@ -921,7 +927,7 @@ Mtx lbl_800F78E0[4] = {
 
 // .bss 0x801F8640..0x8023DD80 (MWCC lays these out in reverse definition order)
 s16 lbl_8023D6C0[0x360];
-u8 lbl_801F86C0[0x45000];
+u8 lbl_801F86C0[2 * SPRITE_DL_POOL];
 Mtx44 lbl_801F8680;
 Mtx44 lbl_801F8640;
 

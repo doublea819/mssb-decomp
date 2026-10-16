@@ -52,7 +52,12 @@ extern void fn_800229CC(void);
 extern MenuPad lbl_803C77B8[];
 // Layer setup for fn_80036C88 (fn_2_0's GX setup is the layer callback in lbl_2_data_C0).
 s32 lbl_2_data_0[0x30] = {
+#ifdef TARGET_PC
+    // Layer 8 holds Career Mode's menu text on PC (port/game/career.c).
+    0xA40, 0, 0, 0, 0x900, 0x5E60, 0x4DE0, 0x2700, 0x6000, 0, 0, 0, 0, 0x400, 0x8C0, 0x20, 0x6A0,
+#else
     0xA40, 0, 0, 0, 0x900, 0x5E60, 0x4DE0, 0x2700, 0, 0, 0, 0, 0, 0x400, 0x8C0, 0x20, 0x6A0,
+#endif
 };
 MenuLayerCallback lbl_2_data_C0 = {0, fn_2_0};
 // ARAM transfer of the menu save buffer (fn_2_554).

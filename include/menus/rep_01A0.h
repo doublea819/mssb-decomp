@@ -11,7 +11,11 @@ typedef struct {
 } SeqEnt;
 
 extern SeqEnt lbl_2_data_128[2];
+#ifdef TARGET_PC
+extern void (*lbl_2_data_138[19])(void); // menu scene handlers, indexed by scene id (18: Career, PC)
+#else
 extern void (*lbl_2_data_138[18])(void); // menu scene handlers, indexed by scene id
+#endif
 
 void fn_2_A70(u16 frames);
 void fn_2_B38(void);

@@ -36,11 +36,21 @@ static u8 lbl_2_bss_1C;                    // nonzero while a fade task is queue
 static f32 lbl_2_bss_18;                   // current volume
 
 // Menu scene handlers, indexed by scene id (called from fn_2_11D8).
+#ifdef TARGET_PC
+extern void port_career_scene(void); // scene 18: Career Mode menu (port/game/career.c)
+void (*lbl_2_data_138[19])(void) = {
+    fn_2_119C,  fn_2_8EEC8, fn_2_121C,  fn_2_121C,   fn_2_1164,  fn_2_27E0,
+    fn_2_19D04, fn_2_54BB0, fn_2_5E104, fn_2_12F88,  fn_2_110B0, fn_80048764,
+    fn_2_11698, fn_8004A2BC, fn_2_1A1B4, fn_2_53408, fn_2_1B7B4, fn_2_854B0,
+    port_career_scene,
+};
+#else
 void (*lbl_2_data_138[18])(void) = {
     fn_2_119C,  fn_2_8EEC8, fn_2_121C,  fn_2_121C,   fn_2_1164,  fn_2_27E0,
     fn_2_19D04, fn_2_54BB0, fn_2_5E104, fn_2_12F88,  fn_2_110B0, fn_80048764,
     fn_2_11698, fn_8004A2BC, fn_2_1A1B4, fn_2_53408, fn_2_1B7B4, fn_2_854B0,
 };
+#endif
 
 // With -inline deferred, mwcc emits functions in reverse source order:
 // the functions below are in reverse address order.

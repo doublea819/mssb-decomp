@@ -93,6 +93,13 @@ typedef struct CareerState {
     f32 chapterIwar, chapterTwar;
     s32 chapterWins;
     s32 gamesPlayed;
+    // Player creation (Career menu)
+    s32 created;       // player created
+    char name[12];
+    s32 star;          // index into sStarNames (whose captain star you use)
+    s32 bars[4];       // Batting, Pitching, Fielding, Speed (1-10)
+    s32 pointsSpent;   // attribute points applied so far
+    s32 innings;       // career game length (Settings)
 } CareerState;
 
 static CareerState sCareer;
@@ -129,7 +136,8 @@ static void career_new(void) {
     for (i = 0; i < 9; i++) {
         sCareer.roster[i] = -1;
     }
-    fprintf(stderr, "[career] new career, player body %d\n", sCareer.body);
+    sCareer.innings = 0; // 0: the saved game option
+    snprintf(sCareer.name, sizeof(sCareer.name), "ROOKIE");
 }
 
 static void career_save(void) {
@@ -158,6 +166,9 @@ static void career_save(void) {
                "chapter_wins = %d\ngames = %d\n",
             sCareer.pointsEarned, sCareer.wins, sCareer.losses, sCareer.ties, sCareer.chapterIwar, sCareer.chapterTwar,
             sCareer.chapterWins, sCareer.gamesPlayed);
+    fprintf(f, "created = %d\nname = %s\nstar = %d\nbars = %d %d %d %d\nspent = %d\ninnings = %d\n", sCareer.created,
+            sCareer.name, sCareer.star, sCareer.bars[0], sCareer.bars[1], sCareer.bars[2], sCareer.bars[3],
+            sCareer.pointsSpent, sCareer.innings);
     fclose(f);
 }
 
@@ -208,6 +219,19 @@ static void career_load(void) {
         else if (K("chapter_twar")) sCareer.chapterTwar = (f32)atof(val);
         else if (K("chapter_wins")) sCareer.chapterWins = atoi(val);
         else if (K("games")) sCareer.gamesPlayed = atoi(val);
+        else if (K("created")) sCareer.created = atoi(val);
+        else if (K("star")) sCareer.star = atoi(val);
+        else if (K("spent")) sCareer.pointsSpent = atoi(val);
+        else if (K("innings")) sCareer.innings = atoi(val);
+        else if (K("bars")) sscanf(val, "%d %d %d %d", &sCareer.bars[0], &sCareer.bars[1], &sCareer.bars[2], &sCareer.bars[3]);
+        else if (K("name")) {
+            char* v = val;
+            char* e;
+            while (*v == ' ') v++;
+            e = v + strlen(v);
+            while (e > v && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ')) *--e = '\0';
+            snprintf(sCareer.name, sizeof(sCareer.name), "%s", v);
+        }
         else if (K("roster")) {
             char* p = val;
             s32 i;
@@ -221,6 +245,12 @@ static void career_load(void) {
     fprintf(stderr, "[career] loaded: stage %d chapter %d game %d team %d points %d (%d-%d)\n", sCareer.stage,
             sCareer.chapter, sCareer.game, sCareer.team, sCareer.pointsEarned, sCareer.wins, sCareer.losses);
 }
+
+// The last career game's recap, shown on the Career menu.
+static char sRecap[6][80];
+static s32 sRecapCount;
+
+static void recap(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
 static void career_log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 #include <stdarg.h>
@@ -239,6 +269,17 @@ static void career_log(const char* fmt, ...) {
         fprintf(f, "%s\n", buf);
         fclose(f);
     }
+}
+
+static void recap(const char* fmt, ...) {
+    va_list ap;
+    if (sRecapCount >= 6) {
+        return;
+    }
+    va_start(ap, fmt);
+    vsnprintf(sRecap[sRecapCount], sizeof(sRecap[0]), fmt, ap);
+    va_end(ap);
+    sRecapCount++;
 }
 
 // The chapters you play, in order (your own captain's is skipped).
@@ -338,6 +379,24 @@ BOOL port_career_setup_next_game(void) {
                 opp[nOpp++] = id;
             }
         }
+        // Your character can't be on both teams: the opponent fields an unused generic instead
+        // (Yoshi's team is all five Shy Guys, for example).
+        for (i = 0; i < nOpp; i++) {
+            if (opp[i] == sCareer.body) {
+                s32 k;
+                for (k = 0; k < (s32)(sizeof(sProloguePool) / sizeof(sProloguePool[0])); k++) {
+                    s32 cand = sProloguePool[k];
+                    s32 j;
+                    s32 used = 0;
+                    for (j = 0; j < nOpp; j++) used |= opp[j] == cand;
+                    for (j = 1; j < 9; j++) used |= sCareer.roster[j] == cand;
+                    if (!used && cand != sCareer.body) {
+                        opp[i] = cand;
+                        break;
+                    }
+                }
+            }
+        }
         stadium = sTeamStadium[opponent];
         sOppTeam = opponent;
     }
@@ -407,7 +466,9 @@ BOOL port_career_setup_next_game(void) {
     g_d_GameSettings.home_AwaySetting = 0;
     {
         const char* v = port_user_ini_get("career_innings");
-        if (v != NULL && atoi(v) >= 1 && atoi(v) <= 9) {
+        if (sCareer.innings >= 1 && sCareer.innings <= 9) {
+            lbl_800E8754.innings = (u8)sCareer.innings; // Career menu > Settings
+        } else if (v != NULL && atoi(v) >= 1 && atoi(v) <= 9) {
             lbl_800E8754.innings = (u8)atoi(v);
         }
     }
@@ -463,7 +524,11 @@ static GameScore score_game(s32 slot) {
         career_log("  You: %d PA, %d H (%d 2B, %d 3B, %d HR), %d RBI, %d R, %d BB, %d K%s", b->plateAppearances,
                    b->hits, b->doubles, b->triples, b->homeRuns, b->rbi, b->runs, b->walks, b->strikeouts,
                    lbl_80353A90.mvp[0] == slot ? ", game MVP" : "");
+        recap("You: %d-%d  %d RBI  %d R%s", b->hits, b->atBats, b->rbi, b->runs,
+              lbl_80353A90.mvp[0] == slot ? "  MVP" : "");
         if (p->played && p->battersFaced > 0) {
+            recap("Pitching: %d.%d IP  %d K  %d H  %d ER", p->outsPitched / 3, p->outsPitched % 3, p->strikeouts,
+                  p->hitsAllowed, p->_04);
             career_log("  Pitching: %d outs, %d K, %d H, %d BB, %d HR, %d ER", p->outsPitched, p->strikeouts,
                        p->hitsAllowed, p->walks, p->homeRunsAllowed, p->_04);
         }
@@ -473,17 +538,28 @@ static GameScore score_game(s32 slot) {
     return g;
 }
 
+// Thresholds are for 9-inning games; shorter games scale them down (at most to a third).
+static f32 length_scale(void) {
+    f32 n = (f32)lbl_800E8754.innings;
+    if (n < 3.0f) n = 3.0f;
+    if (n > 9.0f) n = 9.0f;
+    return n / 9.0f;
+}
+
 static s32 chapter_points(f32 iwar) {
-    if (iwar >= 18.0f) return 4;
-    if (iwar >= 12.0f) return 3;
-    if (iwar >= 7.0f) return 2;
-    if (iwar >= 3.0f) return 1;
+    f32 k = length_scale();
+    if (iwar >= 18.0f * k) return 4;
+    if (iwar >= 12.0f * k) return 3;
+    if (iwar >= 7.0f * k) return 2;
+    if (iwar >= 3.0f * k) return 1;
     return 0;
 }
 
 static const char* recruit_tier(f32 twar) {
-    if (twar >= 9.0f) return "up to Tier 3 (sub-captain)";
+    f32 k = length_scale();
+    if (twar >= 9.0f) return "up to Tier 3 (sub-captain)"; // wins dominate tWAR; not scaled
     if (twar >= 4.0f) return "up to Tier 2 (unique player)";
+    (void)k;
     if (twar >= 0.0f) return "Tier 1 (generic)";
     return "no recruit";
 }
@@ -564,10 +640,15 @@ void port_career_game_final(void) {
     }
     sArmed = 0;
     career_load();
+    sRecapCount = 0;
+    recap("%s %d-%d  %s", lbl_80353A90.winner == 0 ? "WIN" : (lbl_80353A90.winner == 1 ? "LOSS" : "TIE"),
+          lbl_80353A90.runs[0][0], lbl_80353A90.runs[1][0],
+          sOppTeam < 0 ? "Tryout vs Bowser Jr." : sTeamName[sOppTeam]);
     career_log("Final: %d-%d %s", lbl_80353A90.runs[0][0], lbl_80353A90.runs[1][0],
                lbl_80353A90.winner == 0 ? "WIN" : (lbl_80353A90.winner == 1 ? "LOSS" : "TIE"));
     g = score_game(sMySlot);
     career_log("  iWAR %.2f, tWAR %.2f", g.iwar, g.twar);
+    recap("iWAR %.2f   tWAR %.2f", g.iwar, g.twar);
     sCareer.gamesPlayed++;
     if (g.won == 1) sCareer.wins++;
     else if (g.won == 0) sCareer.losses++;
@@ -593,6 +674,7 @@ void port_career_game_final(void) {
         sCareer.pointsEarned += pts;
         build_team_roster(sCareer.team);
         career_log("Captain: %s (score %.2f). Attribute points earned: %d.", sTeamName[sCareer.team], total, pts);
+        recap("Your captain: %s   +%d attribute point%s", sTeamName[sCareer.team], pts, pts == 1 ? "" : "s");
         sCareer.stage = STAGE_CHAPTERS;
         sCareer.chapter = 0;
         sCareer.game = 0;
@@ -611,6 +693,9 @@ void port_career_game_final(void) {
                        sCareer.chapter + 1, sTeamName[career_chapter_team(sCareer.chapter)], sCareer.chapterWins,
                        3 - sCareer.chapterWins, sCareer.chapterIwar, pts, sCareer.chapterTwar,
                        recruit_tier(sCareer.chapterTwar));
+            recap("Series %d-%d   +%d attribute point%s", sCareer.chapterWins, 3 - sCareer.chapterWins, pts,
+                  pts == 1 ? "" : "s");
+            recap("Recruit: %s", recruit_tier(sCareer.chapterTwar));
             sCareer.chapter++;
             sCareer.game = 0;
             sCareer.chapterIwar = sCareer.chapterTwar = 0.0f;
@@ -623,4 +708,531 @@ void port_career_game_final(void) {
         }
     }
     career_save();
+}
+
+
+// ---------------------------------------------------------------- Career menu (scene 18)
+// A menu screen of its own, entered from the main menu's Challenge entry like Options: the
+// game's menu background (changeScene) with the menu drawn in the game's font by its text system
+// (DrawTextOnCondition) on sprite layer 8. First visit: Create Character. After that the hub:
+// Next Game, Attributes, Lineup, Positions, Settings, Save.
+#include "main/file_8000F150.h" // TextSystem lbl_80366B18
+#include "main/file_8001FE00.h" // SceneFade lbl_8037169C
+
+extern void fn_2_11A0(u16 scene);
+extern void port_menus_start_game(void);
+#include "musyx/musyx.h"
+extern u8 lbl_800EFBA4[]; // menu sound-effect volumes
+
+static const char* const sCharName[54] = {
+    "Mario", "Luigi", "DK", "Diddy", "Peach", "Daisy", "Yoshi", "Baby Mario", "Baby Luigi", "Bowser", "Wario",
+    "Waluigi", "Koopa", "Toad", "Boo", "Toadette", "Shy Guy", "Birdo", "Monty", "Bowser Jr.", "Paratroopa",
+    "Pianta", "Pianta", "Pianta", "Noki", "Noki", "Noki", "Hammer Bro", "Toadsworth", "Toad", "Toad", "Toad",
+    "Toad", "Magikoopa", "Magikoopa", "Magikoopa", "Magikoopa", "King Boo", "Petey", "Dixie", "Goomba",
+    "Paragoomba", "Koopa", "Paratroopa", "Shy Guy", "Shy Guy", "Shy Guy", "Shy Guy", "Dry Bones", "Dry Bones",
+    "Dry Bones", "Dry Bones", "Fire Bro", "Boomerang Bro",
+};
+
+// Base bodies: families with color variants, and their colors.
+typedef struct Family {
+    const char* name;
+    s32 count;
+    s32 ids[5];
+    const char* colors[5];
+} Family;
+static const Family sFamilies[] = {
+    {"Toad", 5, {CHAR_ID_TOAD_RED, CHAR_ID_TOAD_BLUE, CHAR_ID_TOAD_YELLOW, CHAR_ID_TOAD_GREEN, CHAR_ID_TOAD_PURPLE},
+     {"Red", "Blue", "Yellow", "Green", "Purple"}},
+    {"Shy Guy", 5, {CHAR_ID_SHYGUY_RED, CHAR_ID_SHYGUY_BLUE, CHAR_ID_SHYGUY_YELLOW, CHAR_ID_SHYGUY_GREEN, CHAR_ID_SHYGUY_BLACK},
+     {"Red", "Blue", "Yellow", "Green", "Black"}},
+    {"Koopa Troopa", 2, {CHAR_ID_KOOPA_GREEN, CHAR_ID_KOOPA_RED}, {"Green", "Red"}},
+    {"Paratroopa", 2, {CHAR_ID_PARATROOPA_RED, CHAR_ID_PARATROOPA_GREEN}, {"Red", "Green"}},
+    {"Pianta", 3, {CHAR_ID_PIANTA_BLUE, CHAR_ID_PIANTA_RED, CHAR_ID_PIANTA_YELLOW}, {"Blue", "Red", "Yellow"}},
+    {"Noki", 3, {CHAR_ID_NOKI_BLUE, CHAR_ID_NOKI_RED, CHAR_ID_NOKI_GREEN}, {"Blue", "Red", "Green"}},
+    {"Bro", 3, {CHAR_ID_BRO_HAMMER, CHAR_ID_BRO_FIRE, CHAR_ID_BRO_BOOMERANG}, {"Hammer", "Fire", "Boomerang"}},
+    {"Magikoopa", 4, {CHAR_ID_MAGIKOOPA_BLUE, CHAR_ID_MAGIKOOPA_RED, CHAR_ID_MAGIKOOPA_GREEN, CHAR_ID_MAGIKOOPA_YELLOW},
+     {"Blue", "Red", "Green", "Yellow"}},
+    {"Dry Bones", 4, {CHAR_ID_DRYBONES_GRAY, CHAR_ID_DRYBONES_GREEN, CHAR_ID_DRYBONES_RED, CHAR_ID_DRYBONES_BLUE},
+     {"Gray", "Green", "Red", "Blue"}},
+};
+#define FAMILY_COUNT ((s32)(sizeof(sFamilies) / sizeof(sFamilies[0])))
+
+// Star Special: any captain's star move (the 12 captains).
+static const s32 sStarChars[12] = {CHAR_ID_MARIO, CHAR_ID_LUIGI, CHAR_ID_PEACH, CHAR_ID_DAISY, CHAR_ID_YOSHI,
+                                   CHAR_ID_BIRDO, CHAR_ID_DK, CHAR_ID_DIDDY, CHAR_ID_WARIO, CHAR_ID_WALUIGI,
+                                   CHAR_ID_BOWSER, CHAR_ID_BOWSERJR};
+
+static const char* const sBarName[4] = {"Batting", "Pitching", "Fielding", "Speed"};
+static const char* const sStadiumName[TEAM_COUNT] = {"Mario Stadium", "Peach Garden", "Wario Palace",
+                                                    "DK Jungle", "Yoshi Park", "Bowser Castle"};
+
+// The game's bars for a character: Batting, Pitching, Fielding, Speed (record bytes 0x37..0x3A are
+// Batting, Pitching, Running, Fielding).
+static void body_bars(s32 id, s32* out) {
+    const u8* b = (const u8*)&lbl_8034E9A0.roster[id / 9][id % 9] + 0x37;
+    out[0] = b[0];
+    out[1] = b[1];
+    out[2] = b[3];
+    out[3] = b[2];
+}
+
+static s32 family_of(s32 id, s32* color) {
+    s32 f;
+    s32 c;
+    for (f = 0; f < FAMILY_COUNT; f++) {
+        for (c = 0; c < sFamilies[f].count; c++) {
+            if (sFamilies[f].ids[c] == id) {
+                if (color) *color = c;
+                return f;
+            }
+        }
+    }
+    if (color) *color = 0;
+    return 0;
+}
+
+// --- text entries
+#define UI_LINES 20
+static u16 sUiBuf[UI_LINES][64];
+static s32 sUiEntry[UI_LINES];
+static s32 sUiCount;
+
+static void encode(u16* out, s32 cap, const char* s) {
+    s32 n = 0;
+    for (; *s != '\0' && n < cap - 1; s++) {
+        char c = *s;
+        u16 g;
+        if (c >= 'A' && c <= 'Z') g = (u16)(0x20 + (c - 'A'));
+        else if (c >= 'a' && c <= 'z') g = (u16)(0x3E + (c - 'a'));
+        else if (c >= '0' && c <= '9') g = (u16)(0x0F + (c - '0'));
+        else if (c == '.' || c == ',' || c == '-' || c == '\'' || c == '/' || c == ':' || c == '(' || c == ')' ||
+                 c == '+')
+            g = (u16)(c - 0x21);
+        else g = 0x4002; // space (and anything the font may not have)
+        out[n++] = g;
+    }
+    out[n] = 0x4000; // end of text (control code 0); a 0 is a glyph, not the end
+}
+
+static void ui_clear(void) {
+    s32 i;
+    for (i = 0; i < sUiCount; i++) {
+        if (sUiEntry[i] >= 0 && lbl_80366B18.entries[sUiEntry[i]].text == sUiBuf[i]) {
+            lbl_80366B18.entries[sUiEntry[i]].state = 0;
+        }
+    }
+    sUiCount = 0;
+}
+
+#define UI_WHITE 0xFFFFFFFF
+#define UI_GOLD 0xFFD830FF
+#define UI_GRAY 0xB0B0B0FF
+#define UI_CURSOR 0x60FF60FF
+
+static void ui_line(s32 x, s32 y, u32 color, const char* fmt, ...) __attribute__((format(printf, 4, 5)));
+static void ui_line(s32 x, s32 y, u32 color, const char* fmt, ...) {
+    char buf[96];
+    va_list ap;
+    s32 k;
+    TextEntry* e;
+    if (sUiCount >= UI_LINES) {
+        return;
+    }
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    for (k = 0; k < 30; k++) {
+        if (lbl_80366B18.entries[k].state == 0) {
+            break;
+        }
+    }
+    if (k >= 30) {
+        return;
+    }
+    encode(sUiBuf[sUiCount], 64, buf);
+    e = &lbl_80366B18.entries[k];
+    memset(e, 0, sizeof(*e));
+    e->text = sUiBuf[sUiCount];
+    e->x = (u16)x;
+    e->y = (u16)y;
+    e->layer = 8;
+    e->fontSize = 1;
+    e->color = color;
+    e->shadowColor = 0x000000FF;
+    e->shadowX = 2;
+    e->shadowY = 2;
+    e->lineSpacing = 2;
+    e->charLimit = -1;
+    e->state = 2;
+    sUiEntry[sUiCount++] = k;
+}
+
+// --- menu state
+enum { PAGE_CREATE, PAGE_HUB, PAGE_ATTR, PAGE_LINEUP, PAGE_POSITIONS, PAGE_SETTINGS };
+enum { CR_BODY, CR_COLOR, CR_NAME, CR_STAR, CR_BAR0, CR_BAR1, CR_BAR2, CR_BAR3, CR_CONFIRM, CR_ROWS };
+enum { HUB_NEXT, HUB_ATTR, HUB_LINEUP, HUB_POSITIONS, HUB_SETTINGS, HUB_SAVE, HUB_ROWS };
+
+static s32 sScene;       // scene step
+static s32 sPage;
+static s32 sRow;
+static s32 sDirty;
+static s32 sNameEdit;    // editing the name: cursor position, -1 off
+static char sMsg[64];    // one-line status ("Saved")
+static s32 sConfirmLeave; // hub: "Leave Career?" prompt up
+// Create Character working copy
+static s32 sFam, sColor, sStar, sBars[4], sPool;
+static char sName[12];
+// Attributes page
+static s32 sAttrBase[4], sAttrSpent;
+
+static void sfx(s32 kind) {
+    static const u16 ids[3] = {0x1B7, 0x1B8, 0x1B9}; // move, confirm, back
+    sndFXStartEx(ids[kind], lbl_800EFBA4[kind], 0x3F, 0);
+}
+
+static void create_begin(void) {
+    s32 base[4];
+    s32 i;
+    sFam = family_of(sCareer.body, &sColor);
+    sStar = sCareer.star;
+    snprintf(sName, sizeof(sName), "%s", sCareer.name[0] ? sCareer.name : "ROOKIE");
+    body_bars(sFamilies[sFam].ids[sColor], base);
+    for (i = 0; i < 4; i++) sBars[i] = base[i];
+    sPool = 0;
+    sNameEdit = -1;
+}
+
+// Changing body/color resets the allocation to that body's own bars.
+static void create_body_changed(void) {
+    s32 i;
+    body_bars(sFamilies[sFam].ids[sColor], sBars);
+    for (i = 0; i < 4; i++) {
+        if (sBars[i] < 1) sBars[i] = 1;
+    }
+    sPool = 0;
+}
+
+static void create_confirm(void) {
+    s32 newBody = sFamilies[sFam].ids[sColor];
+    s32 i;
+    if (sCareer.team >= 0 && newBody != sCareer.body) {
+        for (i = 1; i < 9; i++) {
+            if (sCareer.roster[i] == sCareer.body) sCareer.roster[i] = newBody;
+        }
+    }
+    sCareer.body = newBody;
+    sCareer.star = sStar;
+    for (i = 0; i < 4; i++) sCareer.bars[i] = sBars[i];
+    snprintf(sCareer.name, sizeof(sCareer.name), "%s", sName);
+    sCareer.created = 1;
+    career_save();
+    career_log("Created %s: %s %s, star of %s, bars B%d P%d F%d S%d", sCareer.name, sFamilies[sFam].colors[sColor],
+               sFamilies[sFam].name, sCharName[sStarChars[sStar]], sBars[0], sBars[1], sBars[2], sBars[3]);
+}
+
+static void draw_page(void) {
+    s32 x = 64;
+    s32 y = 56;
+    s32 i;
+    ui_clear();
+    if (sPage == PAGE_CREATE) {
+        ui_line(x, y, UI_GOLD, "CREATE YOUR PLAYER");
+        y += 34;
+        for (i = 0; i < CR_ROWS; i++) {
+            u32 c = (i == sRow) ? UI_CURSOR : UI_WHITE;
+            const char* arrow = (i == sRow) ? "> " : "  ";
+            switch (i) {
+            case CR_BODY: ui_line(x, y, c, "%sBody          %s", arrow, sFamilies[sFam].name); break;
+            case CR_COLOR: ui_line(x, y, c, "%sColor         %s", arrow, sFamilies[sFam].colors[sColor]); break;
+            case CR_NAME: {
+                char shown[24];
+                if (sNameEdit >= 0) {
+                    s32 n = (s32)strlen(sName);
+                    s32 k;
+                    s32 o = 0;
+                    for (k = 0; k <= n && k < 10 && o < 22; k++) {
+                        if (k == sNameEdit) shown[o++] = '(';
+                        shown[o++] = k < n ? sName[k] : ' ';
+                        if (k == sNameEdit) shown[o++] = ')';
+                    }
+                    shown[o] = '\0';
+                } else {
+                    snprintf(shown, sizeof(shown), "%s", sName);
+                }
+                ui_line(x, y, c, "%sName          %s", arrow, shown);
+                break;
+            }
+            case CR_STAR: ui_line(x, y, c, "%sStar Special  %s's star", arrow, sCharName[sStarChars[sStar]]); break;
+            case CR_BAR0: case CR_BAR1: case CR_BAR2: case CR_BAR3:
+                ui_line(x, y, c, "%s%-13s %d", arrow, sBarName[i - CR_BAR0], sBars[i - CR_BAR0]);
+                break;
+            case CR_CONFIRM:
+                ui_line(x, y, sPool == 0 ? c : UI_GRAY, "%sConfirm", arrow);
+                break;
+            }
+            y += 26;
+        }
+        ui_line(x, y + 8, UI_GOLD, "Points to place: %d", sPool);
+        ui_line(x, 404, UI_GRAY, sNameEdit >= 0 ? "Up/Down letter  Left/Right move  A done"
+                                                : "Up/Down choose  Left/Right change  A select  B back");
+    } else if (sPage == PAGE_HUB) {
+        s32 opp = sCareer.stage == STAGE_CHAPTERS ? career_chapter_team(sCareer.chapter) : -1;
+        ui_line(x, y, UI_GOLD, "CAREER  %s", sCareer.name);
+        y += 30;
+        if (sCareer.stage == STAGE_PROLOGUE) {
+            ui_line(x, y, UI_WHITE, "Next: Tryout at Mario Stadium vs Bowser Jr.");
+        } else if (opp >= 0) {
+            ui_line(x, y, UI_WHITE, "Next: %s's team, game %d of 3, at %s", sTeamName[opp], sCareer.game + 1,
+                    sStadiumName[opp]);
+        } else {
+            ui_line(x, y, UI_WHITE, "Regular season complete");
+        }
+        y += 22;
+        ui_line(x, y, UI_WHITE, "Team: %s   Record %d-%d   Points %d", sCareer.team >= 0 ? sTeamName[sCareer.team] : "none yet",
+                sCareer.wins, sCareer.losses, sCareer.pointsEarned - sCareer.pointsSpent);
+        y += 40;
+        for (i = 0; i < HUB_ROWS; i++) {
+            static const char* const rows[HUB_ROWS] = {"Next Game", "Attributes", "Lineup", "Positions", "Settings", "Save"};
+            ui_line(x + 16, y, i == sRow ? UI_CURSOR : UI_WHITE, "%s%s", i == sRow ? "> " : "  ", rows[i]);
+            y += 28;
+        }
+        for (i = 0; i < sRecapCount && i < 4; i++) {
+            ui_line(330, 166 + 22 * i, i == 0 ? UI_GOLD : UI_WHITE, "%s", sRecap[i]);
+        }
+        if (sConfirmLeave) {
+            ui_line(x, 356, UI_GOLD, "Leave Career and go back to the main menu?");
+            ui_line(x, 380, UI_WHITE, "Your career is saved when you leave.");
+            ui_line(x, 404, UI_CURSOR, "A Yes, leave     B No, stay");
+        } else {
+            if (sMsg[0]) ui_line(x, 380, UI_GOLD, "%s", sMsg);
+            ui_line(x, 404, UI_GRAY, "A select  B main menu");
+        }
+    } else if (sPage == PAGE_ATTR) {
+        s32 left = sCareer.pointsEarned - sCareer.pointsSpent;
+        ui_line(x, y, UI_GOLD, "ATTRIBUTES");
+        y += 34;
+        for (i = 0; i < 4; i++) {
+            ui_line(x, y, i == sRow ? UI_CURSOR : UI_WHITE, "%s%-10s %d / 10", i == sRow ? "> " : "  ", sBarName[i],
+                    sCareer.bars[i]);
+            y += 28;
+        }
+        ui_line(x, y, sRow == 4 ? UI_CURSOR : UI_WHITE, "%sDone", sRow == 4 ? "> " : "  ");
+        ui_line(x, y + 40, UI_GOLD, "Points to spend: %d", left);
+        ui_line(x, y + 64, UI_GRAY, "Boosts unlock once every bar is maxed");
+        ui_line(x, 404, UI_GRAY, "Right add a point  Left undo  B back");
+    } else if (sPage == PAGE_LINEUP || sPage == PAGE_POSITIONS) {
+        ui_line(x, y, UI_GOLD, sPage == PAGE_LINEUP ? "LINEUP" : "POSITIONS");
+        y += 34;
+        for (i = 0; i < 9; i++) {
+            s32 id = sCareer.roster[i];
+            ui_line(x, y, id == sCareer.body ? UI_GOLD : UI_WHITE, "%d. %s%s", i + 1, id >= 0 ? sCharName[id] : "-",
+                    id == sCareer.body ? "  (you)" : (i == 0 ? "  (captain)" : ""));
+            y += 24;
+        }
+        ui_line(x, y + 10, UI_GRAY, "Editing comes in the next build");
+        ui_line(x, 404, UI_GRAY, "B back");
+    } else if (sPage == PAGE_SETTINGS) {
+        s32 inn = sCareer.innings >= 1 ? sCareer.innings : lbl_800E8754.innings;
+        ui_line(x, y, UI_GOLD, "SETTINGS");
+        y += 34;
+        ui_line(x, y, sRow == 0 ? UI_CURSOR : UI_WHITE, "%sInnings   %d", sRow == 0 ? "> " : "  ", inn);
+        y += 28;
+        ui_line(x, y, sRow == 1 ? UI_CURSOR : UI_WHITE, "%sDone", sRow == 1 ? "> " : "  ");
+        ui_line(x, y + 40, UI_GRAY, "CPU difficulty comes in the next build");
+        ui_line(x, 404, UI_GRAY, "Left/Right change  B back");
+    }
+    sDirty = 0;
+}
+
+static void go_page(s32 page) {
+    sConfirmLeave = 0;
+    sPage = page;
+    sRow = 0;
+    sMsg[0] = '\0';
+    if (page == PAGE_CREATE) create_begin();
+    if (page == PAGE_ATTR) {
+        s32 i;
+        for (i = 0; i < 4; i++) sAttrBase[i] = sCareer.bars[i];
+        sAttrSpent = sCareer.pointsSpent;
+    }
+    sDirty = 1;
+}
+
+static void leave_to_main_menu(void) {
+    ui_clear();
+    sScene = 0;
+    fn_2_11A0(5);
+}
+
+static void input_create(u16 pr, u16 rp) {
+    if (sNameEdit >= 0) {
+        s32 n = (s32)strlen(sName);
+        char c = sNameEdit < n ? sName[sNameEdit] : ' ';
+        static const char kAlpha[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const char* at = strchr(kAlpha, c);
+        s32 idx = at ? (s32)(at - kAlpha) : 0;
+        if (rp & 0x8) idx = (idx + 1) % 27;
+        else if (rp & 0x4) idx = (idx + 26) % 27;
+        if (rp & 0xC) {
+            if (sNameEdit >= n) {
+                if (n < 10) { sName[n] = kAlpha[idx]; sName[n + 1] = '\0'; }
+            } else {
+                sName[sNameEdit] = kAlpha[idx];
+            }
+            sfx(0);
+            sDirty = 1;
+        }
+        if (rp & 0x2) { if (sNameEdit < n && sNameEdit < 9) sNameEdit++; sfx(0); sDirty = 1; }
+        if (rp & 0x1) { if (sNameEdit > 0) sNameEdit--; sfx(0); sDirty = 1; }
+        if (pr & 0x300) {
+            // trim trailing spaces
+            s32 e = (s32)strlen(sName);
+            while (e > 0 && sName[e - 1] == ' ') sName[--e] = '\0';
+            if (sName[0] == '\0') snprintf(sName, sizeof(sName), "ROOKIE");
+            sNameEdit = -1;
+            sfx(1);
+            sDirty = 1;
+        }
+        return;
+    }
+    if (rp & 0x8) { sRow = (sRow + CR_ROWS - 1) % CR_ROWS; sfx(0); sDirty = 1; }
+    else if (rp & 0x4) { sRow = (sRow + 1) % CR_ROWS; sfx(0); sDirty = 1; }
+    else if (rp & 0x3) {
+        s32 d = (rp & 0x2) ? 1 : -1;
+        switch (sRow) {
+        case CR_BODY: sFam = (sFam + FAMILY_COUNT + d) % FAMILY_COUNT; sColor = 0; create_body_changed(); break;
+        case CR_COLOR: sColor = (sColor + sFamilies[sFam].count + d) % sFamilies[sFam].count; create_body_changed(); break;
+        case CR_STAR: sStar = (sStar + 12 + d) % 12; break;
+        case CR_BAR0: case CR_BAR1: case CR_BAR2: case CR_BAR3: {
+            s32* b = &sBars[sRow - CR_BAR0];
+            if (d > 0 && sPool > 0 && *b < 10) { (*b)++; sPool--; }
+            else if (d < 0 && *b > 1) { (*b)--; sPool++; }
+            break;
+        }
+        default: break;
+        }
+        sfx(0);
+        sDirty = 1;
+    } else if (pr & 0x100) {
+        if (sRow == CR_NAME) { sNameEdit = 0; sfx(1); sDirty = 1; }
+        else if (sRow == CR_CONFIRM && sPool == 0) { create_confirm(); sfx(1); go_page(PAGE_HUB); }
+    } else if (pr & 0x200) {
+        sfx(2);
+        if (sCareer.created) go_page(PAGE_HUB);
+        else leave_to_main_menu();
+    }
+}
+
+static void input_hub(u16 pr, u16 rp) {
+    if (sConfirmLeave) {
+        if (pr & 0x100) {
+            sConfirmLeave = 0;
+            career_save();
+            sfx(1);
+            leave_to_main_menu();
+        } else if (pr & 0x200) {
+            sConfirmLeave = 0;
+            sfx(2);
+            sDirty = 1;
+        }
+        return;
+    }
+    if (rp & 0x8) { sRow = (sRow + HUB_ROWS - 1) % HUB_ROWS; sfx(0); sDirty = 1; }
+    else if (rp & 0x4) { sRow = (sRow + 1) % HUB_ROWS; sfx(0); sDirty = 1; }
+    else if (pr & 0x200) { sfx(2); sConfirmLeave = 1; sMsg[0] = '\0'; sDirty = 1; }
+    else if (pr & 0x100) {
+        sfx(1);
+        switch (sRow) {
+        case HUB_NEXT:
+            ui_clear();
+            sScene = 0;
+            port_career_setup_next_game();
+            port_menus_start_game();
+            break;
+        case HUB_ATTR: go_page(PAGE_ATTR); break;
+        case HUB_LINEUP: go_page(PAGE_LINEUP); break;
+        case HUB_POSITIONS: go_page(PAGE_POSITIONS); break;
+        case HUB_SETTINGS: go_page(PAGE_SETTINGS); break;
+        case HUB_SAVE:
+            career_save();
+            snprintf(sMsg, sizeof(sMsg), "Saved");
+            sDirty = 1;
+            break;
+        }
+    }
+}
+
+static void input_attr(u16 pr, u16 rp) {
+    if (rp & 0x8) { sRow = (sRow + 4) % 5; sfx(0); sDirty = 1; }
+    else if (rp & 0x4) { sRow = (sRow + 1) % 5; sfx(0); sDirty = 1; }
+    else if ((rp & 0x3) && sRow < 4) {
+        s32* b = &sCareer.bars[sRow];
+        if ((rp & 0x2) && sCareer.pointsEarned - sCareer.pointsSpent > 0 && *b < 10) { (*b)++; sCareer.pointsSpent++; }
+        else if ((rp & 0x1) && *b > sAttrBase[sRow]) { (*b)--; sCareer.pointsSpent--; }
+        sfx(0);
+        sDirty = 1;
+    } else if ((pr & 0x200) || ((pr & 0x100) && sRow == 4)) {
+        career_save();
+        sfx(2);
+        go_page(PAGE_HUB);
+        sRow = HUB_ATTR;
+    }
+}
+
+static void input_settings(u16 pr, u16 rp) {
+    if (rp & 0xC) { sRow ^= 1; sfx(0); sDirty = 1; }
+    else if ((rp & 0x3) && sRow == 0) {
+        static const s32 opts[5] = {1, 3, 5, 7, 9};
+        s32 cur = sCareer.innings >= 1 ? sCareer.innings : lbl_800E8754.innings;
+        s32 k = 0;
+        s32 i;
+        for (i = 0; i < 5; i++) if (opts[i] == cur) k = i;
+        k = (k + 5 + ((rp & 0x2) ? 1 : -1)) % 5;
+        sCareer.innings = opts[k];
+        sfx(0);
+        sDirty = 1;
+    } else if ((pr & 0x200) || ((pr & 0x100) && sRow == 1)) {
+        career_save();
+        sfx(2);
+        go_page(PAGE_HUB);
+        sRow = HUB_SETTINGS;
+    }
+}
+
+// Scene 18 handler (lbl_2_data_138), called every frame while the Career menu is up.
+void port_career_scene(void) {
+    s32 port;
+    u16 pr;
+    u16 rp;
+    switch (sScene) {
+    case 0:
+        if (lbl_8037169C._13 == 0) {
+            return; // as Options: wait for the scene fade
+        }
+        changeScene(1, 6);
+        career_load();
+        sUiCount = 0;
+        go_page(sCareer.created ? PAGE_HUB : PAGE_CREATE);
+        sScene = 1;
+        return;
+    case 1:
+        break;
+    default:
+        return;
+    }
+    port = lbl_8034E9A0.ports[0] < 4 ? lbl_8034E9A0.ports[0] : 0;
+    pr = lbl_8034E9A0.input[port].pressed;
+    rp = lbl_8034E9A0.input[port].repeat | pr;
+    switch (sPage) {
+    case PAGE_CREATE: input_create(pr, rp); break;
+    case PAGE_HUB: input_hub(pr, rp); break;
+    case PAGE_ATTR: input_attr(pr, rp); break;
+    case PAGE_SETTINGS: input_settings(pr, rp); break;
+    default:
+        if (pr & 0x300) { sfx(2); go_page(PAGE_HUB); }
+        break;
+    }
+    if (sScene == 1 && sDirty) {
+        draw_page();
+    }
 }

@@ -770,9 +770,6 @@ void fn_2_1DC8(void) {
     case 1:
         lbl_8034E9A0._4708 = 1;
         ((u8*)&g_d_GameSettings)[7] = 5;
-#ifdef TARGET_PC
-        changeScene(4, 6); // Career goes straight into a game, like Toy Field (port/game/career.c)
-#endif
         break;
     case 3:
         lbl_8034E9A0._4708 = 3;
@@ -2174,6 +2171,9 @@ void fn_2_27E0(void) {
         case 6:
         case 9:
         case 12:
+#ifdef TARGET_PC
+        case 18: // back from the Career menu, like from Options
+#endif
             lbl_2_bss_20[0] = 0xC;
             break;
         case 15:
@@ -3377,6 +3377,18 @@ static inline void fn_2_1F30_unload(void) {
 }
 
 // fn_2_1F30, size:0x8B0
+#ifdef TARGET_PC
+// Career menu "Next Game": leave the menus for game.rel, as the main menu does for Toy Field.
+void port_menus_start_game(void) {
+    fn_80062A74();
+    fn_2_1F30_unload();
+    fn_80021410();
+    fn_800ACFB0(lbl_800EF808.groups[37]);
+    fn_2_11A0(4);
+    lbl_2_bss_20[0] = 0;
+}
+#endif
+
 void fn_2_1F30(void) {
     switch (lbl_803CBBCC->step) {
     case 0:
@@ -3407,15 +3419,9 @@ void fn_2_1F30(void) {
         g_d_GameSettings.exhibitionMatchInd = 1;
 #ifdef TARGET_PC
         if (g_d_GameSettings.GameModeSelected == 5) {
-            // Career Mode replaces Challenge (port/game/career.c): set up the next career game and
-            // load game.rel straight from here, as Toy Field and the minigames do.
-            extern BOOL port_career_setup_next_game(void);
-            port_career_setup_next_game();
-            fn_80062A74();
-            fn_2_1F30_unload();
-            fn_80021410();
-            fn_800ACFB0(lbl_800EF808.groups[37]);
-            fn_2_11A0(4);
+            // Career Mode replaces Challenge: open the Career menu (scene 18, port/game/career.c).
+            g_d_GameSettings.GameModeSelected = 0;
+            fn_2_11A0(18);
             lbl_2_bss_20[0] = 0;
             break;
         }
