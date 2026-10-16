@@ -2425,7 +2425,7 @@ static void draw_card(void) {
         static const char* const kTop[4] = {"Generic", "Unique player", "Sub-captain", "Sub-captain"};
         s32 lvl = sCareer.festLevel & 3;
         ui_small(LOW_X, LOW_Y + 1, 0.85f, 15, UI_GOLD, "Star Festival");
-        ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "Win: +%d points\nrecruit up to\n%s", lvl, kTop[lvl]);
+        ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "Win: +%d points\nRecruit tier\n%s", lvl, kTop[lvl]);
     } else if (sPage == PAGE_RECRUIT) {
         if (sProspN > 0) {
             char nm[32];
