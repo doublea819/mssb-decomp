@@ -1704,7 +1704,7 @@ static void box_item(s32 row, s32 valX, s32 hot, const char* label, const char* 
 // (recruit_tier_num): 3 its sub-captain, 2 its unique players, 1 its generic variants, from the
 // game's classification (lbl_801094E4 byte 1: 1 secondary captain, 2 unique, 3/4 variants). Signing
 // is optional; the recruit takes the place, batting slot and field position of a player you pick
-// (never you or your captain).
+// (never you, your captain or your captain's sub-captain: those three are the story's, locked).
 extern u8 lbl_801094E4[];
 static s32 char_tier(s32 id) {
     u8 cls = lbl_801094E4[id * 0x1C + 1];
@@ -1745,8 +1745,18 @@ static void recruit_build(void) {
             }
         }
     }
-    for (i = 1; i < 9; i++) {
-        if (sCareer.roster[i] >= 0 && sCareer.roster[i] != sCareer.body) sRepl[sReplN++] = sCareer.roster[i];
+    {
+        // Your team's own sub-captain (its secondary captain: Luigi, Daisy, Waluigi, Diddy, Birdo).
+        s32 sub = -1;
+        if (sCareer.team >= 0 && sCareer.team < TEAM_COUNT) {
+            for (i = 0; i < 9; i++) {
+                if (char_tier(preset_char(sCareer.team, i)) == 3) sub = preset_char(sCareer.team, i);
+            }
+        }
+        for (i = 1; i < 9; i++) {
+            s32 id = sCareer.roster[i];
+            if (id >= 0 && id != sCareer.body && id != sub) sRepl[sReplN++] = id;
+        }
     }
     if (sProspAt >= sProspN) sProspAt = 0;
     if (sReplAt >= sReplN) sReplAt = 0;
