@@ -1,4 +1,5 @@
 #include "main/file_80034F50.h"
+#include <stdint.h>
 #include "Dolphin/os.h"
 #include "Dolphin/stl.h"
 #include "main/file_8004C5F8.h" // lbl_803C5F74, fn_80052734
@@ -112,6 +113,13 @@ static inline void spaniClearSlot(s32 id) {
 
 #ifdef TARGET_PC
 static void* s_slotEntry[SPANI_TEX_SLOT_COUNT];
+static void* s_loadData; // the buffer fn_80035838's pending load was started with
+// macOS keeps the low 4 GB unmapped, so a host heap pointer below it is garbage (64-bit hosts only).
+#if UINTPTR_MAX > 0xFFFFFFFFu
+#define PORT_BAD_PTR(p) ((uintptr_t)(p) < 0x100000000ull)
+#else
+#define PORT_BAD_PTR(p) ((p) == NULL)
+#endif
 extern int port_spani_trace_on(void);
 extern int port_spani_trace_budget(void);
 #endif
@@ -494,6 +502,10 @@ s32 fn_80035838(void* aramAddr, u8 id) {
         lbl_803C4BE0[lbl_803CBC91].data = ARAMTransfer(aramAddr, 0, 0, 0);
 #ifdef TARGET_PC
         s_slotEntry[lbl_803CBC91] = aramAddr;
+        s_loadData = lbl_803C4BE0[lbl_803CBC91].data; // checked when the load finishes
+        if (PORT_BAD_PTR(s_loadData)) {
+            OSReport("[bank] load id %u: ARAMTransfer returned %p (slot %d)\n", id, s_loadData, (int)lbl_803CBC91);
+        }
 #endif
         lbl_803CBC94 = aramAddr;
         lbl_803CB810 = id;
@@ -508,6 +520,20 @@ s32 fn_80035838(void* aramAddr, u8 id) {
             pa = &s->anim;
             hdr = s->data;
 #ifdef TARGET_PC
+            // A buffer pointer below 4 GB isn't a host heap pointer (macOS keeps the low 4 GB unmapped):
+            // the slot's pointer was overwritten after the load started. Log it, and use the
+            // buffer the load was started with, or start the load again.
+            if (PORT_BAD_PTR(hdr)) {
+                OSReport("[bank] load id %u: slot %d data %p is bad (started with %p); %s\n", id,
+                         (int)lbl_803CBC91, (void*)hdr, s_loadData,
+                         !PORT_BAD_PTR(s_loadData) ? "using that" : "reloading");
+                if (!PORT_BAD_PTR(s_loadData)) {
+                    hdr = s->data = s_loadData;
+                } else {
+                    lbl_803CBC90 = 0;
+                    break;
+                }
+            }
             {
                 extern void port_bank_dump(s32 id, const void* data, u32 size);
                 port_bank_dump(lbl_803CB810, hdr, lbl_803C6CF8.sizeInfo & 0x0FFFFFFF);
