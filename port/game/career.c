@@ -103,6 +103,8 @@ typedef struct CareerState {
     s32 bars[4];       // Batting, Pitching, Fielding, Speed (1-10)
     s32 pointsSpent;   // attribute points applied so far
     s32 innings;       // career game length (Settings)
+    s32 recruitTier;   // a chapter's recruit waiting to be signed: highest tier (1-3), 0 none
+    s32 recruitTeam;   // TEAM_* the recruit comes from
     s32 cpu;           // opponent strength, the game's 4 levels: 0 Weak, 1 Regular, 2 Strong, 3 Powerful
     // Lineup and Positions (the game's lineup screen): your team in batting order and each
     // batter's lbl_80354720 entry (order row, field position). Used while the 9 players match.
@@ -187,9 +189,9 @@ static void career_save(void) {
                "chapter_wins = %d\ngames = %d\n",
             sCareer.pointsEarned, sCareer.wins, sCareer.losses, sCareer.ties, sCareer.chapterIwar, sCareer.chapterTwar,
             sCareer.chapterWins, sCareer.gamesPlayed);
-    fprintf(f, "created = %d\nname = %s\nstar = %d\nbars = %d %d %d %d\nspent = %d\ninnings = %d\ncpu = %d\n", sCareer.created,
+    fprintf(f, "created = %d\nname = %s\nstar = %d\nbars = %d %d %d %d\nspent = %d\ninnings = %d\ncpu = %d\nrecruit = %d %d\n", sCareer.created,
             sCareer.name, sCareer.star, sCareer.bars[0], sCareer.bars[1], sCareer.bars[2], sCareer.bars[3],
-            sCareer.pointsSpent, sCareer.innings, sCareer.cpu);
+            sCareer.pointsSpent, sCareer.innings, sCareer.cpu, sCareer.recruitTier, sCareer.recruitTeam);
     fprintf(f, "season_bat =");
     for (i = 0; i < SB_COUNT; i++) fprintf(f, " %d", sCareer.bat[i]);
     fprintf(f, "\nseason_pit =");
@@ -260,6 +262,7 @@ static void career_load(void) {
         else if (K("spent")) sCareer.pointsSpent = atoi(val);
         else if (K("innings")) sCareer.innings = atoi(val);
         else if (K("cpu")) sCareer.cpu = atoi(val) & 3;
+        else if (K("recruit")) sscanf(val, "%d %d", &sCareer.recruitTier, &sCareer.recruitTeam);
         else if (K("bars")) sscanf(val, "%d %d %d %d", &sCareer.bars[0], &sCareer.bars[1], &sCareer.bars[2], &sCareer.bars[3]);
         else if (K("name")) {
             char* v = val;
@@ -499,10 +502,13 @@ static BOOL setup_game(s32 arm) {
                 opp[nOpp++] = id;
             }
         }
-        // Your character can't be on both teams: the opponent fields an unused generic instead
-        // (Yoshi's team is all five Shy Guys, for example).
+        // A character can't be on both teams (you, or a player you recruited): the opponent fields
+        // an unused generic instead (Yoshi's team is all five Shy Guys, for example).
         for (i = 0; i < nOpp; i++) {
-            if (opp[i] == sCareer.body) {
+            s32 mineToo = opp[i] == sCareer.body;
+            s32 j0;
+            for (j0 = 1; j0 < 9; j0++) mineToo |= sCareer.roster[j0] == opp[i];
+            if (mineToo) {
                 s32 k;
                 for (k = 0; k < (s32)(sizeof(sProloguePool) / sizeof(sProloguePool[0])); k++) {
                     s32 cand = sProloguePool[k];
@@ -824,6 +830,14 @@ static s32 chapter_points(f32 iwar) {
     return 0;
 }
 
+// Highest recruit tier a chapter's tWAR earns: 3 sub-captain, 2 unique player, 1 generic, 0 none.
+static s32 recruit_tier_num(f32 twar) {
+    if (twar >= 9.0f) return 3;
+    if (twar >= 4.0f) return 2;
+    if (twar >= 0.0f) return 1;
+    return 0;
+}
+
 static const char* recruit_tier(f32 twar) {
     f32 k = length_scale();
     if (twar >= 9.0f) return "up to Tier 3 (sub-captain)"; // wins dominate tWAR; not scaled
@@ -987,6 +1001,9 @@ void port_career_game_final(void) {
             recap("Series %d-%d   +%d attribute point%s", sCareer.chapterWins, 3 - sCareer.chapterWins, pts,
                   pts == 1 ? "" : "s");
             recap("Recruit: %s", recruit_tier(sCareer.chapterTwar));
+            // The recruit waits on the Career menu's Prospects page (signing is optional).
+            sCareer.recruitTier = recruit_tier_num(sCareer.chapterTwar);
+            sCareer.recruitTeam = career_chapter_team(sCareer.chapter);
             sCareer.chapter++;
             sCareer.game = 0;
             sCareer.chapterIwar = sCareer.chapterTwar = 0.0f;
@@ -1286,11 +1303,13 @@ static TextEntry* ui_xf(s32 slot, f32 x, f32 y, f32 scale, u32 color, s32 font, 
 }
 
 // --- menu state
-enum { PAGE_CREATE, PAGE_CREATE_BARS, PAGE_HUB, PAGE_ATTR, PAGE_SETTINGS };
+enum { PAGE_CREATE, PAGE_CREATE_BARS, PAGE_HUB, PAGE_ATTR, PAGE_SETTINGS, PAGE_RECRUIT };
 // The quick-game difficulty screen's names, easiest first.
 static const char* const sCpuName[4] = {"Weak", "Regular", "Strong", "Powerful"};
 enum { CR_BODY, CR_COLOR, CR_NAME, CR_STAR, CR_HANDS, CR_BARS, CR_CONFIRM, CR_ROWS };
 enum { HUB_NEXT, HUB_ATTR, HUB_LINEUP, HUB_SETTINGS, HUB_ROWS };
+#define HUB_PROSPECTS HUB_ROWS // 5th hub row, only while a recruit is waiting
+enum { RC_PROSPECT, RC_REPLACE, RC_SIGN, RC_PASS, RC_ROWS };
 enum { LEAVE_MAIN = 1, LEAVE_GAME, LEAVE_LINEUP };
 
 static s32 sScene;        // 0 enter, 1 menu up, 2 leaving
@@ -1312,6 +1331,9 @@ static s32 sFam, sColor, sStar, sBars[4], sPool, sBats, sThrows;
 static char sName[12];
 // Attributes page
 static s32 sAttrBase[4];
+// Prospects page: the recruit candidates and the players they can replace
+static s32 sProsp[9], sProspN, sProspAt;
+static s32 sRepl[8], sReplN, sReplAt;
 
 static s32 sNoFadeWait;
 static s32 sCardUp, sCardKill;
@@ -1390,6 +1412,11 @@ static void card_update(void) {
     }
     // Your face: the body being picked on Create Your Player.
     frames[2] = (sPage == PAGE_CREATE || sPage == PAGE_CREATE_BARS) ? sFamilies[sFam].ids[sColor] : sCareer.body;
+    // Prospects: the prospect's face and his team's logo.
+    if (sPage == PAGE_RECRUIT && sProspN > 0) {
+        frames[1] = logo_frame(sTeamCaptain[sCareer.recruitTeam]);
+        frames[2] = sProsp[sProspAt];
+    }
     for (i = 0; i < 3; i++) {
         LayoutObj* o = lbl_80371C30[sCardTask->start + i].obj;
         s32 kx;
@@ -1423,7 +1450,8 @@ static s32 page_rows(s32 page) {
     switch (page) {
     case PAGE_CREATE: return CR_ROWS;
     case PAGE_CREATE_BARS: return 5;
-    case PAGE_HUB: return HUB_ROWS;
+    case PAGE_HUB: return HUB_ROWS + (sCareer.recruitTier > 0 ? 1 : 0);
+    case PAGE_RECRUIT: return RC_ROWS;
     case PAGE_ATTR: return 5;
     case PAGE_SETTINGS: return 3;
     }
@@ -1534,7 +1562,7 @@ static void row_label(s32 i, char* out, size_t cap) {
         else snprintf(out, cap, "Done");
         break;
     case PAGE_HUB: {
-        static const char* const rows[HUB_ROWS] = {"Next Game", "Attributes", "Lineup & Positions", "Settings", "Save"};
+        static const char* const rows[HUB_ROWS + 1] = {"Next Game", "Attributes", "Lineup & Positions", "Settings", "Prospects"};
         snprintf(out, cap, "%s", rows[i]);
         break;
     }
@@ -1596,12 +1624,13 @@ static void labels_restore(void) {
 }
 
 static void labels_apply(void) {
-    static const char* const kWords[5][7] = {
+    static const char* const kWords[6][7] = {
         {"Character", "Color", "Title", "Encore", "Grip", "Training", "Complete"}, // PAGE_CREATE
         {"Contact", "Pitching", "Fielding", "Pace", "Complete"},                // PAGE_CREATE_BARS
-        {"Play Game", "Training", "Roster", "Options"},                         // PAGE_HUB
+        {"Play Game", "Training", "Roster", "Options", "Prospects"},            // PAGE_HUB
         {"Contact", "Pitching", "Fielding", "Pace", "Complete"},                // PAGE_ATTR
         {"Game Time", "Opponent", "Complete"},                                  // PAGE_SETTINGS
+        {"Prospect", "Replace", "Complete", "Pass"},                            // PAGE_RECRUIT
     };
     LayoutObj* label = port_career_layout_obj(0x18);
     s32 i;
@@ -1671,6 +1700,82 @@ static void box_item(s32 row, s32 valX, s32 hot, const char* label, const char* 
     if (v[0]) ui_line(BOX_X + valX, BOX_Y + row * BOX_ROW, c, "%s", v);
 }
 
+// --- recruiting (Prospects page). Each chapter's tWAR earns a recruit from that team, up to a tier
+// (recruit_tier_num): 3 its sub-captain, 2 its unique players, 1 its generic variants, from the
+// game's classification (lbl_801094E4 byte 1: 1 secondary captain, 2 unique, 3/4 variants). Signing
+// is optional; the recruit takes the place, batting slot and field position of a player you pick
+// (never you or your captain).
+extern u8 lbl_801094E4[];
+static s32 char_tier(s32 id) {
+    u8 cls = lbl_801094E4[id * 0x1C + 1];
+    return cls == 1 ? 3 : (cls == 2 ? 2 : (cls >= 3 ? 1 : 0));
+}
+
+static const char* const sTierName[4] = {"", "Generic", "Unique player", "Sub-captain"};
+
+// "Blue Toad", "Hammer Bro", "Luigi".
+static void char_label(s32 id, char* out, size_t cap) {
+    s32 f;
+    s32 c;
+    for (f = 0; f < FAMILY_COUNT; f++) {
+        for (c = 0; c < sFamilies[f].count; c++) {
+            if (sFamilies[f].ids[c] == id && sFamilies[f].count > 1) {
+                snprintf(out, cap, "%s %s", sFamilies[f].colors[c], sFamilies[f].name);
+                return;
+            }
+        }
+    }
+    snprintf(out, cap, "%s", (id >= 0 && id < 54) ? sCharName[id] : "?");
+}
+
+static void recruit_build(void) {
+    s32 i;
+    s32 j;
+    sProspN = sReplN = 0;
+    if (sCareer.recruitTier > 0 && sCareer.recruitTeam >= 0 && sCareer.recruitTeam < TEAM_COUNT) {
+        // Best tier first.
+        s32 t;
+        for (t = sCareer.recruitTier; t >= 1; t--) {
+            for (i = 0; i < 9; i++) {
+                s32 id = preset_char(sCareer.recruitTeam, i);
+                s32 dup = id == sCareer.body;
+                for (j = 0; j < 9; j++) dup |= sCareer.roster[j] == id;
+                for (j = 0; j < sProspN; j++) dup |= sProsp[j] == id;
+                if (!dup && char_tier(id) == t) sProsp[sProspN++] = id;
+            }
+        }
+    }
+    for (i = 1; i < 9; i++) {
+        if (sCareer.roster[i] >= 0 && sCareer.roster[i] != sCareer.body) sRepl[sReplN++] = sCareer.roster[i];
+    }
+    if (sProspAt >= sProspN) sProspAt = 0;
+    if (sReplAt >= sReplN) sReplAt = 0;
+}
+
+static void recruit_sign(void) {
+    s32 in = sProsp[sProspAt];
+    s32 out = sRepl[sReplAt];
+    s32 i;
+    char a[32];
+    char b[32];
+    for (i = 1; i < 9; i++) {
+        if (sCareer.roster[i] == out) sCareer.roster[i] = in;
+    }
+    // Same batting slot and field position as the player replaced; his own bat/throw hands.
+    for (i = 0; i < 9; i++) {
+        if (sCareer.lineupIds[i] == out) {
+            sCareer.lineupIds[i] = in;
+            sCareer.lineupHand[i] = -1;
+        }
+    }
+    sCareer.recruitTier = 0;
+    career_save();
+    char_label(in, a, sizeof(a));
+    char_label(out, b, sizeof(b));
+    career_log("Signed %s (%s, from %s's team) in place of %s.", a, sTierName[char_tier(in)],
+               sTeamName[sCareer.recruitTeam], b);
+}
+
 static void draw_card(void) {
     const s32* b = sCareer.bat;
     const s32* q = sCareer.pit;
@@ -1699,6 +1804,24 @@ static void draw_card(void) {
         ui_line(BOX_X, BOX_Y + 4 * BOX_ROW + 6, UI_GOLD, "%s", sPage == PAGE_ATTR ? "Points to spend" : "Points to place");
         ui_line(BOX_X + 240, BOX_Y + 4 * BOX_ROW + 6, UI_GOLD, "%d",
                 sPage == PAGE_ATTR ? sCareer.pointsEarned - sCareer.pointsSpent : sPool);
+    } else if (sPage == PAGE_RECRUIT) {
+        char nm[32];
+        s32 bars[4];
+        if (sProspN > 0) {
+            char_label(sProsp[sProspAt], nm, sizeof(nm));
+            body_bars(sProsp[sProspAt], bars);
+            box_item(0, 120, sRow == RC_PROSPECT, "Prospect", "%s", nm);
+            box_item(1, 120, 0, "", "B%d P%d F%d S%d", bars[0], bars[1], bars[2], bars[3]);
+        } else {
+            box_item(0, 120, sRow == RC_PROSPECT, "Prospect", "None left");
+        }
+        if (sReplN > 0) {
+            char_label(sRepl[sReplAt], nm, sizeof(nm));
+            body_bars(sRepl[sReplAt], bars);
+            box_item(2, 120, sRow == RC_REPLACE, "Replace", "%s", nm);
+            box_item(3, 120, 0, "", "B%d P%d F%d S%d", bars[0], bars[1], bars[2], bars[3]);
+        }
+        box_item(4, 120, 0, "Earned", "up to %s", sTierName[sCareer.recruitTier & 3]);
     } else if (sPage == PAGE_SETTINGS) {
         s32 inn = sCareer.innings >= 1 ? sCareer.innings : lbl_800E8754.innings;
         // Two lines centered between the logos and the bottom of the panel.
@@ -1763,7 +1886,18 @@ static void draw_card(void) {
         box_text(BOX_X + 170 + 70, BOX_Y + BOX_ROW, BOX_ROW, UI_GOLD, "%.2f", sCareer.seasonTwar);
     }
     // Bottom panel: your face (sprite), then the last game or the page's note.
-    if (sPage == PAGE_HUB && sConfirmLeave) {
+    if (sPage == PAGE_RECRUIT) {
+        if (sProspN > 0) {
+            char nm[32];
+            char_label(sProsp[sProspAt], nm, sizeof(nm));
+            box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "%s", nm);
+            box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "%s\n%s's team\n%d of %d", sTierName[char_tier(sProsp[sProspAt])],
+                     sTeamName[sCareer.recruitTeam], sProspAt + 1, sProspN);
+        } else {
+            box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "No one to sign");
+            box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "They're all on\nyour team.\nPass to clear");
+        }
+    } else if (sPage == PAGE_HUB && sConfirmLeave) {
         box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "Leave Career?");
         box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "It's saved.\nA Yes    B No");
     } else if (sPage == PAGE_CREATE && sNameEdit >= 0) {
@@ -1805,6 +1939,10 @@ static void go_page(s32 page, s32 row) {
     if (page == PAGE_ATTR) {
         s32 i;
         for (i = 0; i < 4; i++) sAttrBase[i] = sCareer.bars[i];
+    }
+    if (page == PAGE_RECRUIT) {
+        sProspAt = sReplAt = 0;
+        recruit_build();
     }
     port_career_layout_page(page_rows(page), row);
     sDirty = 1;
@@ -2001,6 +2139,7 @@ static void input_hub(u16 pr, u16 rp) {
         case HUB_ATTR: go_page(PAGE_ATTR, 0); break;
         case HUB_LINEUP: begin_leave(LEAVE_LINEUP); break;
         case HUB_SETTINGS: go_page(PAGE_SETTINGS, 0); break;
+        case HUB_PROSPECTS: go_page(PAGE_RECRUIT, 0); break;
         }
     }
 }
@@ -2044,6 +2183,37 @@ static void input_settings(u16 pr, u16 rp) {
     }
 }
 
+static void input_recruit(u16 pr, u16 rp) {
+    s32 d = (rp & 0x2) ? 1 : -1;
+    if (rp & 0xC) move_row((rp & 0x8) ? -1 : 1);
+    else if ((rp & 0x3) && sRow == RC_PROSPECT && sProspN > 1) {
+        sProspAt = (sProspAt + sProspN + d) % sProspN;
+        sfx(0);
+        sDirty = 1;
+    } else if ((rp & 0x3) && sRow == RC_REPLACE && sReplN > 1) {
+        sReplAt = (sReplAt + sReplN + d) % sReplN;
+        sfx(0);
+        sDirty = 1;
+    } else if ((pr & 0x100) && sRow == RC_SIGN) {
+        if (sProspN > 0 && sReplN > 0) {
+            recruit_sign();
+            sfx(1);
+            go_page(PAGE_HUB, HUB_LINEUP); // straight to Roster to check the new lineup
+        } else {
+            sfx(2);
+        }
+    } else if ((pr & 0x100) && sRow == RC_PASS) {
+        career_log("Passed on the recruit from %s's team.", sTeamName[sCareer.recruitTeam]);
+        sCareer.recruitTier = 0;
+        career_save();
+        sfx(2);
+        go_page(PAGE_HUB, HUB_NEXT);
+    } else if (pr & 0x200) {
+        sfx(2);
+        go_page(PAGE_HUB, HUB_PROSPECTS); // decide later
+    }
+}
+
 // Scene 18 handler (lbl_2_data_138), called every frame while the Career menu is up.
 void port_career_scene(void) {
     s32 port;
@@ -2063,6 +2233,7 @@ void port_career_scene(void) {
         sLineupActive = 0;
         page = sCareer.created ? PAGE_HUB : PAGE_CREATE;
         row = (page == PAGE_HUB && sReturnRow >= 0) ? sReturnRow : 0;
+        if (page == PAGE_HUB && sReturnRow < 0 && sCareer.recruitTier > 0) row = HUB_PROSPECTS; // a recruit waiting
         sReturnRow = -1;
         sConfirmLeave = 0;
         sMsg[0] = '\0';
@@ -2130,6 +2301,7 @@ void port_career_scene(void) {
     case PAGE_HUB: input_hub(pr, rp); break;
     case PAGE_ATTR: input_attr(pr, rp); break;
     case PAGE_SETTINGS: input_settings(pr, rp); break;
+    case PAGE_RECRUIT: input_recruit(pr, rp); break;
     }
     if (sScene == 1 && sDirty) {
         draw_page();
