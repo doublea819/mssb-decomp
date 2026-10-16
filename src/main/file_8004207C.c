@@ -1,5 +1,11 @@
 #include "main/file_8004207C.h"
 #ifdef TARGET_PC
+// Career menu (port/game/career.c): its Lineup and Positions pages are this screen.
+s32 port_career_lineup_active(void);
+s32 port_career_lineup_take_field_view(void);
+void port_career_lineup_done(s32 toGame);
+#endif
+#ifdef TARGET_PC
 #include "main/charsel_state_type.h"
 // CharSelWork is another view of CharSelectState: keep them in step on PC.
 #define CSW_SAME(a, b) _Static_assert(offsetof(CharSelWork, a) == offsetof(CharSelectState, b), "CharSelWork." #a)
@@ -1160,6 +1166,15 @@ void fn_8004617C(s32 port) {
             } else if (g_d_GameSettings.GameModeSelected == 5) {
                 fn_800625A4(0, 0x43);
                 lbl_803297E0._CF38 = 14;
+#ifdef TARGET_PC
+            } else if (g_d_GameSettings._10 == 0 && lbl_803297E0._CF4E[0] == 0 && port_career_lineup_active()) {
+                // Career: your lineup is done; the opponent's is the CPU's.
+                lbl_803297E0._CF4E[0] = 1;
+                lbl_803297E0._CF4E[1] = 1;
+                fn_800625A4(0, 0x43);
+                fn_800625A4(1, 0x43);
+                lbl_803297E0._CF38 = 14;
+#endif
             } else if (g_d_GameSettings._10 == 0 && lbl_803297E0._CF4E[0] == 0) {
                 if (g_d_GameSettings._06 == 2) {
                     lbl_803297E0._CF38 = 10;
@@ -1413,7 +1428,11 @@ void fn_80047CE0(void) {
     lbl_803C66B0.portOf[0] = 0;
     lbl_803C66B0.portOf[1] = 1;
     if (g_d_GameSettings._06 != 2) {
-        if (g_d_GameSettings.GameModeSelected != 5 && lbl_803CBBCC->prevScene == 0xA) {
+        if (g_d_GameSettings.GameModeSelected != 5 && lbl_803CBBCC->prevScene == 0xA
+#ifdef TARGET_PC
+            && !port_career_lineup_active() // keep the career team's saved order and positions
+#endif
+        ) {
             characterSelectScreen(0);
             characterSelectScreen(1);
         } else if (g_d_GameSettings.GameModeSelected == 5 && gChallengeSave._4445 == 0) {
@@ -1435,7 +1454,11 @@ void fn_80047CE0(void) {
     }
     SetMenuNumber();
     if (g_d_GameSettings._06 != 2 && lbl_803CBBCC->prevScene != 0xA &&
-        g_d_GameSettings._10 == 0 && g_d_GameSettings.GameModeSelected != 5) {
+        g_d_GameSettings._10 == 0 && g_d_GameSettings.GameModeSelected != 5
+#ifdef TARGET_PC
+        && !port_career_lineup_active() // a fresh visit (as from team select), not a return from stadium select
+#endif
+    ) {
         lbl_803297E0._CF43 = 1;
         lbl_803297E0._CF4E[0] = 1;
         fn_800625A4(0, 0x39);
@@ -1485,6 +1508,17 @@ void pauseMenuSelection(void) {
         lbl_803297E0._CF38++;
         break;
     case 2:
+#ifdef TARGET_PC
+        // Career > Positions: open on the field view (what R does, fn_8004617C).
+        if (lbl_803C66B0.active[0] == 0 && lbl_803C66B0.active[1] == 0 && lbl_803297E0._CF52[0] == 0 &&
+            port_career_lineup_take_field_view()) {
+            lbl_803297E0._CF54[0] = lbl_803297E0._CF52[0];
+            lbl_803297E0._CF4A[0] = 1;
+            lbl_803297E0._CF52[0] = 1;
+            fn_800625A4(0, 0x3C);
+            break;
+        }
+#endif
         for (i = 0; i < 2; i++) {
             fn_8004617C(i);
         }
@@ -1563,6 +1597,11 @@ void pauseMenuSelection(void) {
             lbl_8034E9A0._48AF = 1;
             lbl_8034E9A0._48B1 = 1;
             lbl_803297E0._CF5F = 0;
+#ifdef TARGET_PC
+            if (port_career_lineup_active()) {
+                port_career_lineup_done(1); // keeps the order and positions; the career game is set up
+            }
+#endif
             SET_SCENE(4);
         } else {
             if (lbl_8034E978._24 != 0) { // header animation still running
@@ -1593,6 +1632,12 @@ void pauseMenuSelection(void) {
             lbl_803297E0._CF4E[1] = 0;
             lbl_803297E0._CF4E[0] = 0;
             fn_80069854();
+#ifdef TARGET_PC
+            if (g_d_GameSettings._06 != 2 && port_career_lineup_active()) {
+                port_career_lineup_done(0); // back to the Career menu
+                SET_SCENE(18);
+            } else
+#endif
             if (g_d_GameSettings._06 != 2 && g_d_GameSettings.GameModeSelected == 5) {
                 SET_SCENE(0xD);
             } else if (g_d_GameSettings._06 == 2) {
@@ -1636,6 +1681,15 @@ void pauseMenuSelection(void) {
         lbl_803C5EA4._36 = 1;
         lbl_803C5EA4.prevMode = lbl_803C5EA4.mode;
         lbl_803C5EA4.mode = 0;
+#ifdef TARGET_PC
+        if (port_career_lineup_active()) {
+            fn_80069854();
+            port_career_lineup_done(0); // B: back to the Career menu, keeping the changes
+            SET_SCENE(18);
+            fn_800B0A14_removeQueue(NULL);
+            break;
+        }
+#endif
         SET_SCENE(0xA);
         fn_800B0A14_removeQueue(NULL);
         break;

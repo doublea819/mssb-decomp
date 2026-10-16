@@ -2446,11 +2446,52 @@ s32 port_stadium_select_enabled(void);
 // Main menu without the modes the port doesn't offer (port/game/menu_scope.c):
 // their buttons are hidden and the ones below move up. The rows are placed by
 // the sprites' animations (base position 0), so moving one is a base offset.
+static MenuTask* sPortMainMenuTask; // the main-menu layout task while it is up
+static s32 sPortCareerRows;          // > 0: the layout is the Career menu's, with this many rows
+
+// Career menu (port/game/career.c): the main menu's own layout (background, button plates and
+// their word pictures, the orange plate of the highlighted row); career.c swaps the word
+// pictures. The mode descriptions are kept running but drawn transparent: the highlight steps
+// wait on their animations, and hidden sprites don't animate.
+static void port_career_menu_layout(MenuTask* o) {
+    s32 i;
+    for (i = 0; i < 7; i++) {
+        LayoutObj* hl = MN_SLOT(3 + BASE(o) + i);
+        LayoutObj* btn = MN_SLOT(0xA + BASE(o) + i);
+        LayoutObj* panel = MN_SLOT(0x11 + BASE(o) + i);
+        LayoutObj* label = MN_SLOT(0x18 + BASE(o) + i);
+        if (btn == NULL || label == NULL || panel == NULL || hl == NULL) {
+            continue;
+        }
+        hl->y = btn->y = panel->y = label->y = 0.0f;
+        if (i < sPortCareerRows) {
+            btn->flags |= 2;
+            label->flags |= 2;
+            panel->flags |= 2;
+        } else {
+            btn->flags &= ~2;
+            label->flags &= ~2;
+            panel->flags &= ~2;
+            hl->flags &= ~2;
+        }
+    }
+    for (i = 0x20; i <= 0x21; i++) {
+        if (MN_SLOT(i + BASE(o)) != NULL) {
+            MN_SLOT(i + BASE(o))->color &= ~0xFF;
+        }
+    }
+}
+
 static void port_main_menu_layout(MenuTask* o) {
     static const u8 kSlots[] = {3, 0xA, 0x11, 0x18}; // highlight, button, panel, item
     const f32 kRowStep = 46.0f; // distance between two rows
     s32 i;
     s32 k;
+    sPortMainMenuTask = o;
+    if (sPortCareerRows > 0) {
+        port_career_menu_layout(o);
+        return;
+    }
     for (i = 0; i < 7; i++) {
         s32 row = port_menu_row(i);
         for (k = 0; k < (s32)sizeof(kSlots); k++) {
@@ -2481,6 +2522,10 @@ void fn_2_747FC(void) {
     port_main_menu_layout(o);
 #endif
     if (lbl_8034E9A0._472A == 0) {
+#ifdef TARGET_PC
+        sPortMainMenuTask = NULL;
+        sPortCareerRows = 0;
+#endif
         fn_80034CEC(o);
         REMOVE_QUEUE_NOARG();
         lbl_8034E9A0._472A = 0xFF;
@@ -2576,6 +2621,68 @@ void fn_2_747FC(void) {
         }
         break;
     }
+}
+#endif
+
+#ifdef TARGET_PC
+// --- Career menu on the main menu's layout (port/game/career.c)
+// Opens the layout with `rows` rows (1-7) and the cursor on `row`; it plays the main menu's intro.
+void port_career_layout_open(s32 rows, s32 row) {
+    sPortCareerRows = rows;
+    lbl_2_bss_F410._00 = row;
+    lbl_2_bss_F410._04 = row;
+    lbl_8034E9A0._4751 = 0;
+    lbl_8034E9A0._4752 = 0;
+    lbl_803C66B0.steps[0][0] = 0;
+    memset(&lbl_803C66B0.steps[0][1], 0, 6);
+    lbl_8034E9A0._472A = 0xFF;
+    fn_2_74D8C();
+    fn_800625A4(0, 0x54);
+}
+
+// Changes the page in place: a new row count and the cursor on `row`.
+void port_career_layout_page(s32 rows, s32 row) {
+    s32 prev = lbl_2_bss_F410._00;
+    sPortCareerRows = rows;
+    if (row != prev) {
+        lbl_2_bss_F410._04 = prev;
+        lbl_2_bss_F410._00 = row;
+        lbl_803C66B0.steps[1][1] = 0;
+        fn_800625A4(0, 0x56);
+    }
+}
+
+// Moves the highlight to `row`, as the main menu's own cursor does (fn_2_1800).
+void port_career_layout_move(s32 row) {
+    lbl_2_bss_F410._04 = lbl_2_bss_F410._00;
+    lbl_2_bss_F410._00 = row;
+    fn_800625A4(0, 0x56);
+}
+
+// Frees the layout (the task removes itself on its next frame).
+void port_career_layout_close(void) {
+    if (sPortMainMenuTask != NULL) {
+        lbl_8034E9A0._472A = 0; // the Career rows stay until the task is gone (no main-menu frame)
+    } else {
+        sPortCareerRows = 0;
+    }
+}
+
+s32 port_career_layout_up(void) {
+    return sPortMainMenuTask != NULL;
+}
+
+// The layout's busy flag: input waits while the highlight animates.
+s32 port_career_layout_busy(void) {
+    return lbl_803C66B0.active[0] != 0;
+}
+
+// Sprite `slot` of the layout (0x18 + row: a row's label, 0x20: the description), or NULL.
+LayoutObj* port_career_layout_obj(s32 slot) {
+    if (sPortMainMenuTask == NULL || slot < 0 || slot >= sPortMainMenuTask->count) {
+        return NULL;
+    }
+    return MN_SLOT(slot + BASE(sPortMainMenuTask));
 }
 #endif
 

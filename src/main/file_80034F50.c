@@ -494,6 +494,10 @@ s32 fn_80035838(void* aramAddr, u8 id) {
             pa = &s->anim;
             hdr = s->data;
 #ifdef TARGET_PC
+            {
+                extern void port_bank_dump(s32 id, const void* data, u32 size);
+                port_bank_dump(lbl_803CB810, hdr, lbl_803C6CF8.sizeInfo & 0x0FFFFFFF);
+            }
             port_swap_offset_table(hdr, 2); // texture archive, animation
 #endif
             s->tex = (u8*)hdr + hdr[0];
