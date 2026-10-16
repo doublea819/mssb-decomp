@@ -854,6 +854,23 @@ static BOOL setup_game(s32 arm) {
         // team logos, fn_800678CC) from the Challenge save.
         g_d_GameSettings.GameModeSelected = GAME_TYPE_EXHIBITION_GAME;
         g_d_GameSettings.exhibitionMatchInd = 1;
+        // The builder's logo pick (fn_800678CC) indexes its 12-captain tables by the captain, with
+        // no check: a generic captain (the tryout's you, a Star Festival invitee) reads past them.
+        // It gets a real captain; ours go in afterwards.
+        {
+            s32 b0 = CHAR_ID_MARIO;
+            s32 b1 = CHAR_ID_PEACH;
+            s32 k;
+            for (k = 0; k < 12; k++) {
+                if (lbl_80108ED0[k] == cap0) b0 = cap0;
+            }
+            for (k = 0; k < 12; k++) {
+                if (lbl_80108ED0[k] == cap1) b1 = cap1;
+            }
+            if (b1 == b0) b1 = b0 == CHAR_ID_MARIO ? CHAR_ID_PEACH : CHAR_ID_MARIO;
+            lbl_8034E9A0.captain[0] = b0;
+            lbl_8034E9A0.captain[1] = b1;
+        }
         fn_2_2FC0(10, 0, 1);
         place_team(0, cap0, mine, nMine);
         place_team(1, cap1, opp, nOpp);
