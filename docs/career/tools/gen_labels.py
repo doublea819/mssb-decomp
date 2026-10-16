@@ -1,5 +1,5 @@
 exec(open('docs/career/tools/compose.py').read().split("WORDS=")[0])
-WORDS=["Play Game","Training","Roster","Contact","Pitching","Fielding","Pace","Complete","Game Time","Character","Color","Title","Encore","Grip"]
+WORDS=["Play Game","Training","Roster","Contact","Pitching","Fielding","Pace","Complete","Game Time","Character","Color","Title","Encore","Grip","Opponent"]
 def tile_c4(grid):
     out=bytearray()
     for by in range(0,24,8):

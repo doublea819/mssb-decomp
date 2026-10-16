@@ -1664,6 +1664,11 @@ s32 port_menu_mode_enabled(s32 entry);
 s32 port_stadium_select_enabled(void);
 #endif
 
+#ifdef TARGET_PC
+s32 port_career_return_pending(void); // port/game/career.c
+static s32 sPortAutoCareer;           // after a career game: open the Career menu once the main menu settles
+#endif
+
 // fn_2_1800, size:0x288
 void fn_2_1800(void) {
     MenuButtons b;
@@ -1675,6 +1680,16 @@ void fn_2_1800(void) {
     if (lbl_803C66B0.active[0] != 0) {
         return;
     }
+#ifdef TARGET_PC
+    if (sPortAutoCareer) {
+        // Back from a career game: select Career (entry 1) as if A were pressed on it.
+        sPortAutoCareer = 0;
+        lbl_2_bss_F410._00 = 1;
+        fn_2_1DC8();
+        lbl_80366158._27 = 0;
+        return;
+    }
+#endif
     if (b.down & 0x100) {
 #ifdef TARGET_PC
         if (!port_menu_mode_enabled(lbl_2_bss_F410._00)) {
@@ -3399,6 +3414,12 @@ void fn_2_1F30(void) {
         memset(&lbl_8034E9A0._4712, 0, 2); // _4712 and _4713
         lbl_2_bss_F410._00 = lbl_8034E9A0._4712;
         lbl_2_bss_F410._04 = lbl_8034E9A0._4713;
+#ifdef TARGET_PC
+        if (port_career_return_pending()) {
+            lbl_2_bss_F410._00 = lbl_2_bss_F410._04 = 1; // the main menu opens on Career
+            sPortAutoCareer = 1;
+        }
+#endif
         g_d_GameSettings._10 = 0;
         lbl_803C66B0.steps[0][0] = 0;
         memset(&lbl_803C66B0.steps[0][1], 0, 6);

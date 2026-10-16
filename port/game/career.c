@@ -103,6 +103,7 @@ typedef struct CareerState {
     s32 bars[4];       // Batting, Pitching, Fielding, Speed (1-10)
     s32 pointsSpent;   // attribute points applied so far
     s32 innings;       // career game length (Settings)
+    s32 cpu;           // opponent strength, the game's 4 levels: 0 Weak, 1 Regular, 2 Strong, 3 Powerful
     // Lineup and Positions (the game's lineup screen): your team in batting order and each
     // batter's lbl_80354720 entry (order row, field position). Used while the 9 players match.
     s32 lineupSet;
@@ -155,6 +156,7 @@ static void career_new(void) {
         sCareer.roster[i] = -1;
     }
     sCareer.innings = 0; // 0: the saved game option
+    sCareer.cpu = 1;     // Regular
     sCareer.bats = sCareer.throws = -1;
     snprintf(sCareer.name, sizeof(sCareer.name), "ROOKIE");
 }
@@ -185,9 +187,9 @@ static void career_save(void) {
                "chapter_wins = %d\ngames = %d\n",
             sCareer.pointsEarned, sCareer.wins, sCareer.losses, sCareer.ties, sCareer.chapterIwar, sCareer.chapterTwar,
             sCareer.chapterWins, sCareer.gamesPlayed);
-    fprintf(f, "created = %d\nname = %s\nstar = %d\nbars = %d %d %d %d\nspent = %d\ninnings = %d\n", sCareer.created,
+    fprintf(f, "created = %d\nname = %s\nstar = %d\nbars = %d %d %d %d\nspent = %d\ninnings = %d\ncpu = %d\n", sCareer.created,
             sCareer.name, sCareer.star, sCareer.bars[0], sCareer.bars[1], sCareer.bars[2], sCareer.bars[3],
-            sCareer.pointsSpent, sCareer.innings);
+            sCareer.pointsSpent, sCareer.innings, sCareer.cpu);
     fprintf(f, "season_bat =");
     for (i = 0; i < SB_COUNT; i++) fprintf(f, " %d", sCareer.bat[i]);
     fprintf(f, "\nseason_pit =");
@@ -257,6 +259,7 @@ static void career_load(void) {
         else if (K("star")) sCareer.star = atoi(val);
         else if (K("spent")) sCareer.pointsSpent = atoi(val);
         else if (K("innings")) sCareer.innings = atoi(val);
+        else if (K("cpu")) sCareer.cpu = atoi(val) & 3;
         else if (K("bars")) sscanf(val, "%d %d %d %d", &sCareer.bars[0], &sCareer.bars[1], &sCareer.bars[2], &sCareer.bars[3]);
         else if (K("name")) {
             char* v = val;
@@ -607,6 +610,9 @@ static BOOL setup_game(s32 arm) {
             lbl_800E8754.innings = (u8)atoi(v);
         }
     }
+    // Opponent strength: the value the quick-game difficulty screen saves (fn_2_87A8, through
+    // lbl_803CB8D0 = {3, 2, 1, 0}); fn_3_5A87C hands it to the CPU team (AIDifficulty0Special3Weak).
+    lbl_800E8754._01[2] = (u8)(3 - (sCareer.cpu & 3));
     if (!arm) {
         return TRUE; // the Lineup / Positions pages: the teams only
     }
@@ -895,6 +901,16 @@ static void build_team_roster(s32 team) {
     sCareer.roster[replaced] = sCareer.body;
 }
 
+// Back in the menus after a career game (scored, or quit from the pause menu): the main menu opens
+// the Career menu (fn_2_1F30 / fn_2_1800). Clears sArmed so a quit game isn't scored later.
+static s32 sReturnHub;
+s32 port_career_return_pending(void) {
+    s32 r = sReturnHub || sArmed;
+    sReturnHub = 0;
+    sArmed = 0;
+    return r;
+}
+
 // Called right after the game's end-of-game bookkeeping (fn_3_76558).
 void port_career_game_final(void) {
     GameScore g;
@@ -902,6 +918,7 @@ void port_career_game_final(void) {
         return; // not a career game (or a rematch from the results screen)
     }
     sArmed = 0;
+    sReturnHub = 1;
     career_load();
     sRecapCount = 0;
     recap("%s %d-%d  %s", lbl_80353A90.winner == 0 ? "WIN" : (lbl_80353A90.winner == 1 ? "LOSS" : "TIE"),
@@ -1270,6 +1287,8 @@ static TextEntry* ui_xf(s32 slot, f32 x, f32 y, f32 scale, u32 color, s32 font, 
 
 // --- menu state
 enum { PAGE_CREATE, PAGE_CREATE_BARS, PAGE_HUB, PAGE_ATTR, PAGE_SETTINGS };
+// The quick-game difficulty screen's names, easiest first.
+static const char* const sCpuName[4] = {"Weak", "Regular", "Strong", "Powerful"};
 enum { CR_BODY, CR_COLOR, CR_NAME, CR_STAR, CR_HANDS, CR_BARS, CR_CONFIRM, CR_ROWS };
 enum { HUB_NEXT, HUB_ATTR, HUB_LINEUP, HUB_SETTINGS, HUB_ROWS };
 enum { LEAVE_MAIN = 1, LEAVE_GAME, LEAVE_LINEUP };
@@ -1406,7 +1425,7 @@ static s32 page_rows(s32 page) {
     case PAGE_CREATE_BARS: return 5;
     case PAGE_HUB: return HUB_ROWS;
     case PAGE_ATTR: return 5;
-    case PAGE_SETTINGS: return 2;
+    case PAGE_SETTINGS: return 3;
     }
     return 1;
 }
@@ -1525,6 +1544,7 @@ static void row_label(s32 i, char* out, size_t cap) {
         break;
     case PAGE_SETTINGS:
         if (i == 0) snprintf(out, cap, "Innings  %d", sCareer.innings >= 1 ? sCareer.innings : lbl_800E8754.innings);
+        else if (i == 1) snprintf(out, cap, "Opponent  %s", sCpuName[sCareer.cpu & 3]);
         else snprintf(out, cap, "Done");
         break;
     }
@@ -1581,7 +1601,7 @@ static void labels_apply(void) {
         {"Contact", "Pitching", "Fielding", "Pace", "Complete"},                // PAGE_CREATE_BARS
         {"Play Game", "Training", "Roster", "Options"},                         // PAGE_HUB
         {"Contact", "Pitching", "Fielding", "Pace", "Complete"},                // PAGE_ATTR
-        {"Game Time", "Complete"},                                              // PAGE_SETTINGS
+        {"Game Time", "Opponent", "Complete"},                                  // PAGE_SETTINGS
     };
     LayoutObj* label = port_career_layout_obj(0x18);
     s32 i;
@@ -1685,8 +1705,9 @@ static void draw_card(void) {
         u32 c = sRow == 0 ? UI_GOLD : UI_WHITE;
         ui_line(BOX_X, 222, c, "Game Time");
         ui_line(BOX_X + 150, 222, c, "%d inning%s", inn, inn == 1 ? "" : "s");
-        ui_line(BOX_X, 256, UI_WHITE, "CPU level");
-        ui_line(BOX_X + 150, 256, UI_WHITE, "soon");
+        c = sRow == 1 ? UI_GOLD : UI_WHITE;
+        ui_line(BOX_X, 256, c, "Opponent");
+        ui_line(BOX_X + 150, 256, c, "%s", sCpuName[sCareer.cpu & 3]);
     } else {
         // Hub: two columns of label / value (labels at 282 and 452, values 92 / 70 to the right),
         // each column one entry; the WAR row is gold.
@@ -2012,7 +2033,11 @@ static void input_settings(u16 pr, u16 rp) {
         sCareer.innings = opts[k];
         sfx(0);
         sDirty = 1;
-    } else if ((pr & 0x200) || ((pr & 0x100) && sRow == 1)) {
+    } else if ((rp & 0x3) && sRow == 1) {
+        sCareer.cpu = (sCareer.cpu + 4 + ((rp & 0x2) ? 1 : -1)) & 3;
+        sfx(0);
+        sDirty = 1;
+    } else if ((pr & 0x200) || ((pr & 0x100) && sRow == 2)) {
         career_save();
         sfx(2);
         go_page(PAGE_HUB, HUB_SETTINGS);
