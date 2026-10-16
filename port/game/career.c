@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 
 extern CharSelectState lbl_8034E9A0;
 extern CharacterStats inMemRoster[2][9];
@@ -79,7 +80,10 @@ static const s32 sBodyIds[] = {CHAR_ID_TOAD_RED, CHAR_ID_TOAD_BLUE, CHAR_ID_TOAD
                                CHAR_ID_DRYBONES_RED, CHAR_ID_DRYBONES_BLUE};
 
 // ---------------------------------------------------------------- state
-enum { STAGE_PROLOGUE = 0, STAGE_CHAPTERS = 1, STAGE_SEASON_DONE = 9 };
+// Postseason: Star Festival (home, recruiting), Bowser's crash game (home, recruiting), the Kingdom
+// Cup (single elimination, Bowser Jr. 1 seed), and the epilogue game when you win the Cup.
+enum { STAGE_PROLOGUE = 0, STAGE_CHAPTERS = 1, STAGE_FESTIVAL = 2, STAGE_BOWSER = 3, STAGE_CUP = 4,
+       STAGE_EPILOGUE = 5, STAGE_SEASON_DONE = 9 };
 
 enum { SB_G, SB_PA, SB_AB, SB_H, SB_2B, SB_3B, SB_HR, SB_RBI, SB_R, SB_BB, SB_HBP, SB_K, SB_SB, SB_COUNT };
 enum { SP_G, SP_OUTS, SP_K, SP_BB, SP_H, SP_R, SP_ER, SP_HR, SP_COUNT };
@@ -121,6 +125,19 @@ typedef struct CareerState {
     // Bat / throw hand (0 right, 1 left; -1: the body's own), and each lineup player's.
     s32 bats, throws;
     s32 lineupHand[9]; // BattingStance + FieldingArm * 2
+    // Recruit from a list instead of a chapter team's roster (Star Festival, Bowser game).
+    s32 recruitPool[9], recruitPoolN, recruitLogo; // candidates; captain for the logo
+    // Postseason
+    s32 regWins, regLosses; // record when the regular season ended (Kingdom Cup seed)
+    s32 festLevel;          // Star Festival talent: 0 Mushroom, 1 Flower, 2 Star, 3 Special
+    s32 festSeed;
+    s32 festIds[9];         // the invitees (festIds[0] their captain)
+    s32 cupSeed[TEAM_COUNT]; // Kingdom Cup seeds by TEAM_* (TEAM_BOWSER is Bowser Jr.'s team, seed 1)
+    s32 cupRound;           // 0 quarterfinal, 1 semifinal, 2 final
+    s32 cupA[2], cupAWin;   // Bowser Jr.'s side: its quarterfinal and winner (Bowser Jr. beats him)
+    s32 cupBye;             // your side's bye (your own team when you're the 2 seed)
+    s32 cupQf[2], cupQfWin; // your side's quarterfinal (cupQf[0] is you when you play in it)
+    s32 champion;           // won the Kingdom Cup
 } CareerState;
 
 static CareerState sCareer;
@@ -160,6 +177,9 @@ static void career_new(void) {
     sCareer.innings = 0; // 0: the saved game option
     sCareer.cpu = 1;     // Regular
     sCareer.bats = sCareer.throws = -1;
+    sCareer.recruitTeam = -1;
+    sCareer.festLevel = 1;
+    for (i = 0; i < 9; i++) sCareer.festIds[i] = -1;
     snprintf(sCareer.name, sizeof(sCareer.name), "ROOKIE");
 }
 
@@ -197,6 +217,15 @@ static void career_save(void) {
     fprintf(f, "\nseason_pit =");
     for (i = 0; i < SP_COUNT; i++) fprintf(f, " %d", sCareer.pit[i]);
     fprintf(f, "\nlast1 = %s\nlast2 = %s\nlast3 = %s\n", sCareer.last[0], sCareer.last[1], sCareer.last[2]);
+    fprintf(f, "post = %d %d %d %d %d\nfest =", sCareer.regWins, sCareer.regLosses, sCareer.festLevel, sCareer.festSeed,
+            sCareer.champion);
+    for (i = 0; i < 9; i++) fprintf(f, " %d", sCareer.festIds[i]);
+    fprintf(f, "\nrpool = %d %d", sCareer.recruitPoolN, sCareer.recruitLogo);
+    for (i = 0; i < 9; i++) fprintf(f, " %d", sCareer.recruitPool[i]);
+    fprintf(f, "\ncup =");
+    for (i = 0; i < TEAM_COUNT; i++) fprintf(f, " %d", sCareer.cupSeed[i]);
+    fprintf(f, " %d %d %d %d %d %d %d %d\n", sCareer.cupRound, sCareer.cupA[0], sCareer.cupA[1], sCareer.cupAWin,
+            sCareer.cupBye, sCareer.cupQf[0], sCareer.cupQf[1], sCareer.cupQfWin);
     fprintf(f, "war = %.2f %.2f %.2f %.2f %d\nhands = %d %d\n", sCareer.seasonIwar, sCareer.seasonTwar,
             sCareer.lastIwar, sCareer.lastTwar, sCareer.hasLast, sCareer.bats, sCareer.throws);
     if (sCareer.lineupSet) {
@@ -277,6 +306,30 @@ static void career_load(void) {
                    &sCareer.hasLast);
         }
         else if (K("hands")) sscanf(val, "%d %d", &sCareer.bats, &sCareer.throws);
+        else if (K("post")) sscanf(val, "%d %d %d %d %d", &sCareer.regWins, &sCareer.regLosses, &sCareer.festLevel,
+                                   &sCareer.festSeed, &sCareer.champion);
+        else if (K("fest") || K("rpool") || K("cup")) {
+            char* q = val;
+            s32 i;
+            if (K("fest")) {
+                for (i = 0; i < 9; i++) sCareer.festIds[i] = (s32)strtol(q, &q, 10);
+            } else if (K("rpool")) {
+                sCareer.recruitPoolN = (s32)strtol(q, &q, 10);
+                sCareer.recruitLogo = (s32)strtol(q, &q, 10);
+                for (i = 0; i < 9; i++) sCareer.recruitPool[i] = (s32)strtol(q, &q, 10);
+                if (sCareer.recruitPoolN < 0 || sCareer.recruitPoolN > 9) sCareer.recruitPoolN = 0;
+            } else {
+                for (i = 0; i < TEAM_COUNT; i++) sCareer.cupSeed[i] = (s32)strtol(q, &q, 10);
+                sCareer.cupRound = (s32)strtol(q, &q, 10);
+                sCareer.cupA[0] = (s32)strtol(q, &q, 10);
+                sCareer.cupA[1] = (s32)strtol(q, &q, 10);
+                sCareer.cupAWin = (s32)strtol(q, &q, 10);
+                sCareer.cupBye = (s32)strtol(q, &q, 10);
+                sCareer.cupQf[0] = (s32)strtol(q, &q, 10);
+                sCareer.cupQf[1] = (s32)strtol(q, &q, 10);
+                sCareer.cupQfWin = (s32)strtol(q, &q, 10);
+            }
+        }
         else if (K("season_bat") || K("season_pit")) {
             s32* dst = K("season_bat") ? sCareer.bat : sCareer.pit;
             s32 n = K("season_bat") ? SB_COUNT : SP_COUNT;
@@ -437,6 +490,211 @@ static void apply_lineup(void) {
     }
 }
 
+// ---------------------------------------------------------------- postseason
+static s32 char_tier(s32 id);
+static const char* const sCharName[54];
+static char sOppLabel[32] = "Bowser Jr."; // the armed game's opponent, for the recap
+static s32 sHomeGame;                     // you're the home team in the armed game
+
+static u32 sRng = 1;
+static s32 rnd(s32 n) {
+    sRng = sRng * 1103515245u + 12345u;
+    return n > 0 ? (s32)((sRng >> 16) % (u32)n) : 0;
+}
+static void shuffle(s32* a, s32 n) {
+    s32 i;
+    for (i = n - 1; i > 0; i--) {
+        s32 j = rnd(i + 1);
+        s32 t = a[i];
+        a[i] = a[j];
+        a[j] = t;
+    }
+}
+
+static s32 on_my_team(s32 id) {
+    s32 i;
+    if (id == sCareer.body) return 1;
+    for (i = 0; i < 9; i++) {
+        if (sCareer.roster[i] == id) return 1;
+    }
+    return 0;
+}
+
+static s32 on_bowser_team(s32 id) {
+    s32 i;
+    if (id == CHAR_ID_BOWSER || id == CHAR_ID_BOWSERJR) return 1;
+    for (i = 0; i < 9; i++) {
+        if (preset_char(TEAM_BOWSER, i) == id) return 1;
+    }
+    return 0;
+}
+
+static s32 bar_sum(s32 id) {
+    const u8* b = (const u8*)&lbl_8034E9A0.roster[id / 9][id % 9] + 0x37;
+    return b[0] + b[1] + b[2] + b[3];
+}
+
+// Opponent slots 1-8: `cands` in order, skipping the captain, your team and repeats; any shortfall
+// from the generics (a character can't play for both teams).
+static s32 opp_fill(s32 captain, const s32* cands, s32 n, s32* opp) {
+    s32 k = 0;
+    s32 i;
+    s32 j;
+    for (i = 0; i < n + (s32)(sizeof(sProloguePool) / sizeof(sProloguePool[0])) && k < 8; i++) {
+        s32 id = i < n ? cands[i] : sProloguePool[i - n];
+        s32 dup = id < 0 || id >= 54 || id == captain || on_my_team(id);
+        for (j = 0; j < k; j++) dup |= opp[j] == id;
+        if (!dup) opp[k++] = id;
+    }
+    return k;
+}
+
+// Star Festival invitees: the players not on your team (or Bowser's), never a primary captain.
+//   Mushroom: generics. Flower: 4 unique players, the rest generics. Star: 1-2 sub-captains, the
+//   rest unique players. Special: every sub-captain left, then the best unique players.
+// Any tier that runs short is filled from the tier below.
+static void fest_build(void) {
+    s32 pool[4][54];
+    s32 n[4] = {0, 0, 0, 0};
+    s32 want[4] = {0, 0, 0, 0};
+    s32 out = 0;
+    s32 id;
+    s32 t;
+    s32 i;
+    sRng = 0x5EED0000u ^ (u32)(sCareer.festSeed * 7919 + sCareer.festLevel);
+    for (id = 0; id < 54; id++) {
+        t = char_tier(id);
+        if (t == 0 || on_my_team(id) || on_bowser_team(id)) continue;
+        pool[t][n[t]++] = id;
+    }
+    for (t = 1; t <= 3; t++) shuffle(pool[t], n[t]);
+    if (sCareer.festLevel == 3) {
+        // The best unique players first (bars total).
+        for (i = 0; i < n[2]; i++) {
+            s32 j;
+            for (j = i + 1; j < n[2]; j++) {
+                if (bar_sum(pool[2][j]) > bar_sum(pool[2][i])) {
+                    s32 x = pool[2][i];
+                    pool[2][i] = pool[2][j];
+                    pool[2][j] = x;
+                }
+            }
+        }
+    }
+    switch (sCareer.festLevel) {
+    case 0: want[1] = 9; break;
+    case 1: want[2] = 4; want[1] = 5; break;
+    case 2: want[3] = 1 + rnd(2); want[2] = 9 - want[3]; break;
+    default: want[3] = 9; want[2] = 9; break;
+    }
+    // Best tier first (the first invitee captains), each short tier filled from the next one down.
+    for (t = 3; t >= 1; t--) {
+        s32 take = want[t] < 9 - out ? want[t] : 9 - out;
+        for (i = 0; i < n[t] && take > 0; i++, take--) sCareer.festIds[out++] = pool[t][i];
+        if (t > 1) want[t - 1] += take;
+        // what this tier used is gone from its pool
+        if (i > 0) {
+            memmove(pool[t], pool[t] + i, (size_t)(n[t] - i) * sizeof(s32));
+            n[t] -= i;
+        }
+    }
+    for (t = 1; t <= 3 && out < 9; t++) {
+        for (i = 0; i < n[t] && out < 9; i++) sCareer.festIds[out++] = pool[t][i];
+    }
+    for (; out < 9; out++) sCareer.festIds[out] = -1;
+}
+
+// Kingdom Cup seed from the regular-season wins.
+static s32 cup_my_seed(void) {
+    s32 w = sCareer.regWins;
+    if (w <= 1) return 6;
+    if (w <= 4) return 5;
+    if (w <= 7) return 4;
+    if (w <= 9) return 3;
+    return 2;
+}
+
+// The bracket: Bowser Jr. (1) has a bye on one side; you're always on the other side, so you only
+// meet him in the final. Bowser Jr. wins all of his games. The other seeds are random.
+static void cup_start(void) {
+    s32 others[4];
+    s32 seeds[4];
+    s32 n = 0;
+    s32 k = 0;
+    s32 my = cup_my_seed();
+    s32 t;
+    s32 i;
+    sRng = (u32)time(NULL);
+    for (t = 0; t < TEAM_BOWSER; t++) {
+        if (t != sCareer.team) others[n++] = t;
+    }
+    for (i = 2; i <= 6; i++) {
+        if (i != my) seeds[k++] = i;
+    }
+    shuffle(others, 4);
+    for (i = 0; i < TEAM_COUNT; i++) sCareer.cupSeed[i] = 0;
+    sCareer.cupSeed[TEAM_BOWSER] = 1;
+    sCareer.cupSeed[sCareer.team] = my;
+    for (i = 0; i < 4; i++) sCareer.cupSeed[others[i]] = seeds[i];
+    if (my == 2) {
+        sCareer.cupBye = sCareer.team;
+        sCareer.cupQf[0] = others[0];
+        sCareer.cupQf[1] = others[1];
+        sCareer.cupA[0] = others[2];
+        sCareer.cupA[1] = others[3];
+        sCareer.cupQfWin = sCareer.cupQf[rnd(2)];
+        sCareer.cupRound = 1;
+    } else {
+        s32 rest[3];
+        s32 r = 0;
+        for (i = 0; i < 4; i++) {
+            if (sCareer.cupSeed[others[i]] == 2) sCareer.cupBye = others[i];
+            else rest[r++] = others[i];
+        }
+        sCareer.cupQf[0] = sCareer.team;
+        sCareer.cupQf[1] = rest[0];
+        sCareer.cupA[0] = rest[1];
+        sCareer.cupA[1] = rest[2];
+        sCareer.cupQfWin = sCareer.team;
+        sCareer.cupRound = 0;
+    }
+    sCareer.cupAWin = sCareer.cupA[rnd(2)];
+    career_log("Kingdom Cup: you're the %d seed (%d regular-season wins). Bowser Jr. 1 (bye). %s side: %s %d bye; "
+               "quarterfinal %s %d vs %s %d. Other side: %s %d vs %s %d.",
+               my, sCareer.regWins, sTeamName[sCareer.team], sTeamName[sCareer.cupBye],
+               sCareer.cupSeed[sCareer.cupBye], sTeamName[sCareer.cupQf[0]], sCareer.cupSeed[sCareer.cupQf[0]],
+               sTeamName[sCareer.cupQf[1]], sCareer.cupSeed[sCareer.cupQf[1]], sTeamName[sCareer.cupA[0]],
+               sCareer.cupSeed[sCareer.cupA[0]], sTeamName[sCareer.cupA[1]], sCareer.cupSeed[sCareer.cupA[1]]);
+}
+
+// This round's opponent (TEAM_*; TEAM_BOWSER is Bowser Jr.'s team in the final).
+static s32 cup_opponent(void) {
+    if (sCareer.cupRound >= 2) return TEAM_BOWSER;
+    if (sCareer.cupRound == 1) return sCareer.cupBye == sCareer.team ? sCareer.cupQfWin : sCareer.cupBye;
+    return sCareer.cupQf[1];
+}
+
+static const char* const sCupRound[3] = {"Quarterfinal", "Semifinal", "Final"};
+static const char* const sFestName[4] = {"Mushroom", "Flower", "Star", "Special"};
+
+// Your home park (your captain's stadium).
+static s32 home_stadium(void) {
+    return (sCareer.team >= 0 && sCareer.team < TEAM_COUNT) ? sTeamStadium[sCareer.team] : STADIUM_ID_MARIO_STADIUM;
+}
+
+// The season is over (Cup lost, or the epilogue played): keep it as career_done.sav, start a new one.
+static void career_archive(void) {
+    char from[1024];
+    char to[1024];
+    career_path(from, sizeof(from), "career.sav");
+    career_path(to, sizeof(to), "career_done.sav");
+    rename(from, to);
+    career_log("Season finished (%d-%d, %s); saved as career_done.sav. Starting a new career.", sCareer.regWins,
+               sCareer.regLosses, sCareer.champion ? "Kingdom Cup champions" : "no Cup");
+    career_new();
+    career_save();
+}
+
 static BOOL setup_game(s32 arm);
 static void apply_player_ratings(CharacterStats* me);
 
@@ -456,18 +714,10 @@ static BOOL setup_game(s32 arm) {
 
     career_load();
     if (sCareer.stage == STAGE_SEASON_DONE) {
-        // The Star Festival, Bowser game and Kingdom Cup aren't built yet: keep the finished season
-        // as career_done.sav and start a new career.
-        char from[1024];
-        char to[1024];
-        career_path(from, sizeof(from), "career.sav");
-        career_path(to, sizeof(to), "career_done.sav");
-        rename(from, to);
-        career_log("Season finished (%d-%d-%d, %d attribute points); saved as career_done.sav. Starting a new career.",
-                   sCareer.wins, sCareer.losses, sCareer.ties, sCareer.pointsEarned);
-        career_new();
-        career_save();
+        if (!arm) return FALSE; // the Career menu offers a new career
+        career_archive();
     }
+    sHomeGame = 0;
 
     if (sCareer.stage == STAGE_PROLOGUE) {
         // Tryout at Mario Stadium: you and 8 generics vs Bowser Jr. and 8 generics.
@@ -489,7 +739,8 @@ static BOOL setup_game(s32 arm) {
         }
         stadium = STADIUM_ID_MARIO_STADIUM;
         sOppTeam = -1;
-    } else {
+        snprintf(sOppLabel, sizeof(sOppLabel), "Bowser Jr.");
+    } else if (sCareer.stage == STAGE_CHAPTERS) {
         s32 opponent = career_chapter_team(sCareer.chapter);
         lbl_8034E9A0.captain[0] = sTeamCaptain[sCareer.team];
         lbl_8034E9A0.captain[1] = sTeamCaptain[opponent];
@@ -525,6 +776,74 @@ static BOOL setup_game(s32 arm) {
         }
         stadium = sTeamStadium[opponent];
         sOppTeam = opponent;
+        snprintf(sOppLabel, sizeof(sOppLabel), "%s", sTeamName[opponent]);
+    } else {
+        // Postseason.
+        s32 cands[16];
+        s32 nc = 0;
+        s32 cap1;
+        lbl_8034E9A0.captain[0] = sTeamCaptain[sCareer.team];
+        for (i = 1; i < 9; i++) {
+            mine[nMine++] = sCareer.roster[i];
+        }
+        stadium = home_stadium();
+        sHomeGame = 1;
+        sOppTeam = -1;
+        if (sCareer.stage == STAGE_FESTIVAL) {
+            s32 valid = sCareer.festIds[0] >= 0;
+            for (i = 0; i < 9; i++) valid &= !on_my_team(sCareer.festIds[i]);
+            if (!valid) fest_build();
+            cap1 = sCareer.festIds[0];
+            for (i = 1; i < 9; i++) cands[nc++] = sCareer.festIds[i];
+            snprintf(sOppLabel, sizeof(sOppLabel), "Star Festival");
+        } else if (sCareer.stage == STAGE_BOWSER) {
+            // Bowser's team crashes the party; Bowser Jr. sits it out.
+            cap1 = CHAR_ID_BOWSER;
+            for (i = 0; i < 9; i++) {
+                s32 id = preset_char(TEAM_BOWSER, i);
+                if (id != CHAR_ID_BOWSER && id != CHAR_ID_BOWSERJR) cands[nc++] = id;
+            }
+            sOppTeam = TEAM_BOWSER;
+            snprintf(sOppLabel, sizeof(sOppLabel), "Bowser");
+        } else if (sCareer.stage == STAGE_CUP) {
+            s32 o = cup_opponent();
+            if (o == TEAM_BOWSER) {
+                // Bowser Jr. took the team over for the Cup; Bowser stays on to support him. He hosts.
+                cap1 = CHAR_ID_BOWSERJR;
+                for (i = 0; i < 9; i++) {
+                    s32 id = preset_char(TEAM_BOWSER, i);
+                    if (id != CHAR_ID_BOWSERJR) cands[nc++] = id;
+                }
+                cands[nc++] = CHAR_ID_BOWSER;
+                stadium = STADIUM_ID_BOWSERS_CASTLE;
+                sHomeGame = 0;
+                snprintf(sOppLabel, sizeof(sOppLabel), "Bowser Jr.");
+            } else {
+                cap1 = sTeamCaptain[o];
+                for (i = 0; i < 9; i++) cands[nc++] = preset_char(o, i);
+                // The higher seed hosts.
+                sHomeGame = sCareer.cupSeed[sCareer.team] < sCareer.cupSeed[o];
+                stadium = sHomeGame ? home_stadium() : sTeamStadium[o];
+                snprintf(sOppLabel, sizeof(sOppLabel), "%s", sTeamName[o]);
+            }
+            sOppTeam = o;
+        } else {
+            // Epilogue: the captains and sub-captains not on your team, at Mario Stadium.
+            static const s32 kStars[12] = {CHAR_ID_MARIO, CHAR_ID_PEACH, CHAR_ID_YOSHI, CHAR_ID_DK, CHAR_ID_WARIO,
+                                           CHAR_ID_BOWSER, CHAR_ID_LUIGI, CHAR_ID_DAISY, CHAR_ID_BIRDO,
+                                           CHAR_ID_DIDDY, CHAR_ID_WALUIGI, CHAR_ID_BOWSERJR};
+            cap1 = -1;
+            for (i = 0; i < 12; i++) {
+                if (on_my_team(kStars[i])) continue;
+                if (cap1 < 0) cap1 = kStars[i];
+                else cands[nc++] = kStars[i];
+            }
+            stadium = STADIUM_ID_MARIO_STADIUM;
+            sHomeGame = 0;
+            snprintf(sOppLabel, sizeof(sOppLabel), "the All-Stars");
+        }
+        lbl_8034E9A0.captain[1] = cap1;
+        nOpp = opp_fill(cap1, cands, nc, opp);
     }
 
     // Build both teams the menus' way (positions, batting order), then put our players in.
@@ -607,7 +926,8 @@ static BOOL setup_game(s32 arm) {
     g_d_GameSettings._10 = 0;            // human vs CPU: you control your whole team
     // The team index that bats first (fn_3_5A87C: teamBatting = home_AwaySetting). You're the visitor
     // at the tryout and at every chapter game (their park), so you bat first.
-    g_d_GameSettings.home_AwaySetting = 0;
+    // At home (postseason games at your park, the higher Cup seed) the opponent bats first.
+    g_d_GameSettings.home_AwaySetting = sHomeGame ? 1 : 0;
     {
         const char* v = port_user_ini_get("career_innings");
         if (sCareer.innings >= 1 && sCareer.innings <= 9) {
@@ -625,9 +945,20 @@ static BOOL setup_game(s32 arm) {
     sArmed = 1;
     if (sCareer.stage == STAGE_PROLOGUE) {
         career_log("Prologue: the tryout at Mario Stadium. Bowser Jr. is here. You are slot %d.", sMySlot);
-    } else {
+    } else if (sCareer.stage == STAGE_CHAPTERS) {
         career_log("Chapter %d (%s's team), game %d of 3, at their stadium. You are slot %d.", sCareer.chapter + 1,
                    sTeamName[sOppTeam], sCareer.game + 1, sMySlot);
+    } else if (sCareer.stage == STAGE_FESTIVAL) {
+        career_log("Star Festival (%s): invitees captained by %s, at your park. You are slot %d.",
+                   sFestName[sCareer.festLevel & 3], sCharName[sCareer.festIds[0]], sMySlot);
+    } else if (sCareer.stage == STAGE_BOWSER) {
+        career_log("Bowser's team crashes the party (Bowser Jr. sits out), at your park. You are slot %d.", sMySlot);
+    } else if (sCareer.stage == STAGE_CUP) {
+        career_log("Kingdom Cup %s vs %s (seed %d vs %d), %s. You are slot %d.", sCupRound[sCareer.cupRound],
+                   sOppLabel, sCareer.cupSeed[sCareer.team], sCareer.cupSeed[sOppTeam],
+                   sHomeGame ? "at home" : "away", sMySlot);
+    } else {
+        career_log("Epilogue: the champions vs the All-Stars at Mario Stadium. You are slot %d.", sMySlot);
     }
     return TRUE;
 }
@@ -937,12 +1268,12 @@ void port_career_game_final(void) {
     sRecapCount = 0;
     recap("%s %d-%d  %s", lbl_80353A90.winner == 0 ? "WIN" : (lbl_80353A90.winner == 1 ? "LOSS" : "TIE"),
           lbl_80353A90.runs[0][0], lbl_80353A90.runs[1][0],
-          sOppTeam < 0 ? "Tryout vs Bowser Jr." : sTeamName[sOppTeam]);
+          sCareer.stage == STAGE_PROLOGUE ? "Tryout vs Bowser Jr." : sOppLabel);
     career_log("Final: %d-%d %s", lbl_80353A90.runs[0][0], lbl_80353A90.runs[1][0],
                lbl_80353A90.winner == 0 ? "WIN" : (lbl_80353A90.winner == 1 ? "LOSS" : "TIE"));
     snprintf(sCareer.last[0], sizeof(sCareer.last[0]), "%s %d-%d vs %s",
              lbl_80353A90.winner == 0 ? "W" : (lbl_80353A90.winner == 1 ? "L" : "T"), lbl_80353A90.runs[0][0],
-             lbl_80353A90.runs[1][0], sOppTeam < 0 ? "Bowser Jr." : sTeamName[sOppTeam]);
+             lbl_80353A90.runs[1][0], sOppLabel);
     sCareer.last[1][0] = sCareer.last[2][0] = '\0';
     g = score_game(sMySlot);
     sCareer.lastIwar = g.iwar;
@@ -955,9 +1286,12 @@ void port_career_game_final(void) {
     career_log("  iWAR %.2f, tWAR %.2f", g.iwar, g.twar);
     recap("iWAR %.2f   tWAR %.2f", g.iwar, g.twar);
     sCareer.gamesPlayed++;
-    if (g.won == 1) sCareer.wins++;
-    else if (g.won == 0) sCareer.losses++;
-    else sCareer.ties++;
+    if (sCareer.stage <= STAGE_CHAPTERS) {
+        // The record is the regular season's (the postseason games don't count).
+        if (g.won == 1) sCareer.wins++;
+        else if (g.won == 0) sCareer.losses++;
+        else sCareer.ties++;
+    }
 
     if (sCareer.stage == STAGE_PROLOGUE) {
         f32 total = g.iwar + g.twar;
@@ -985,7 +1319,7 @@ void port_career_game_final(void) {
         sCareer.game = 0;
         sCareer.chapterIwar = sCareer.chapterTwar = 0.0f;
         sCareer.chapterWins = 0;
-    } else {
+    } else if (sCareer.stage == STAGE_CHAPTERS) {
         sCareer.chapterIwar += g.iwar;
         sCareer.chapterTwar += g.twar;
         if (g.won == 1) sCareer.chapterWins++;
@@ -1004,16 +1338,91 @@ void port_career_game_final(void) {
             // The recruit waits on the Career menu's Prospects page (signing is optional).
             sCareer.recruitTier = recruit_tier_num(sCareer.chapterTwar);
             sCareer.recruitTeam = career_chapter_team(sCareer.chapter);
+            sCareer.recruitPoolN = 0;
             sCareer.chapter++;
             sCareer.game = 0;
             sCareer.chapterIwar = sCareer.chapterTwar = 0.0f;
             sCareer.chapterWins = 0;
             if (sCareer.chapter >= 4) {
-                sCareer.stage = STAGE_SEASON_DONE;
-                career_log("Regular season complete: %d-%d-%d, %d attribute points earned.", sCareer.wins,
-                           sCareer.losses, sCareer.ties, sCareer.pointsEarned);
+                sCareer.stage = STAGE_FESTIVAL;
+                sCareer.regWins = sCareer.wins;
+                sCareer.regLosses = sCareer.losses;
+                sCareer.festSeed = (s32)(time(NULL) & 0xFFFF);
+                sCareer.festIds[0] = -1; // invitees picked on the Star Festival page
+                career_log("Regular season complete: %d-%d-%d, %d attribute points earned. Next: the Star Festival.",
+                           sCareer.wins, sCareer.losses, sCareer.ties, sCareer.pointsEarned);
             }
         }
+    } else if (sCareer.stage == STAGE_FESTIVAL) {
+        // Win: points for your game plus the talent level, and a recruit up to its best tier.
+        static const s32 kFestTier[4] = {1, 2, 3, 3};
+        s32 lvl = sCareer.festLevel & 3;
+        s32 pts = chapter_points(g.iwar * 3.0f) + (g.won == 1 ? lvl : 0);
+        s32 i;
+        sCareer.pointsEarned += pts;
+        sCareer.recruitTier = g.won == 1 ? kFestTier[lvl] : 1;
+        sCareer.recruitTeam = -1;
+        sCareer.recruitPoolN = 0;
+        for (i = 0; i < 9; i++) {
+            if (sCareer.festIds[i] >= 0) sCareer.recruitPool[sCareer.recruitPoolN++] = sCareer.festIds[i];
+        }
+        sCareer.recruitLogo = sCareer.festIds[0];
+        career_log("Star Festival (%s) %s: +%d attribute points, recruit up to tier %d from the invitees. Bowser's team "
+                   "is on its way.", sFestName[lvl], g.won == 1 ? "won" : "lost", pts, sCareer.recruitTier);
+        recap("Star Festival  +%d attribute point%s", pts, pts == 1 ? "" : "s");
+        sCareer.stage = STAGE_BOWSER;
+    } else if (sCareer.stage == STAGE_BOWSER) {
+        // Win: Hammer Bro wants in. Lose: Dry Bones does. (Another of his kind if he's already yours.)
+        static const s32 kWin[3] = {CHAR_ID_BRO_HAMMER, CHAR_ID_BRO_FIRE, CHAR_ID_BRO_BOOMERANG};
+        static const s32 kLose[4] = {CHAR_ID_DRYBONES_GRAY, CHAR_ID_DRYBONES_GREEN, CHAR_ID_DRYBONES_RED,
+                                     CHAR_ID_DRYBONES_BLUE};
+        const s32* list = g.won == 1 ? kWin : kLose;
+        s32 n = g.won == 1 ? 3 : 4;
+        s32 pts = chapter_points(g.iwar * 3.0f);
+        s32 i;
+        sCareer.pointsEarned += pts;
+        sCareer.recruitPoolN = 0;
+        for (i = 0; i < n && sCareer.recruitPoolN == 0; i++) {
+            if (!on_my_team(list[i])) sCareer.recruitPool[sCareer.recruitPoolN++] = list[i];
+        }
+        sCareer.recruitTier = sCareer.recruitPoolN > 0 ? 1 : 0;
+        sCareer.recruitTeam = TEAM_BOWSER;
+        sCareer.recruitLogo = CHAR_ID_BOWSER;
+        career_log("Bowser game %s: +%d attribute points%s%s. Bowser Jr. calls it pathetic and takes the team over for "
+                   "the Kingdom Cup.", g.won == 1 ? "won" : "lost", pts,
+                   sCareer.recruitPoolN ? ", recruit available: " : "",
+                   sCareer.recruitPoolN ? sCharName[sCareer.recruitPool[0]] : "");
+        recap("Bowser game  +%d attribute point%s", pts, pts == 1 ? "" : "s");
+        sCareer.stage = STAGE_CUP;
+        cup_start();
+    } else if (sCareer.stage == STAGE_CUP) {
+        s32 pts = chapter_points(g.iwar * 3.0f);
+        sCareer.pointsEarned += pts;
+        if (g.won == 1) {
+            if (sCareer.cupRound == 0) {
+                career_log("Kingdom Cup quarterfinal won (+%d points). Bowser Jr. had the bye; %s beat %s.", pts,
+                           sTeamName[sCareer.cupAWin],
+                           sTeamName[sCareer.cupA[0] == sCareer.cupAWin ? sCareer.cupA[1] : sCareer.cupA[0]]);
+                sCareer.cupRound = 1;
+            } else if (sCareer.cupRound == 1) {
+                career_log("Kingdom Cup semifinal won (+%d points). Bowser Jr. beat %s 5-2. The final is at Bowser "
+                           "Castle.", pts, sTeamName[sCareer.cupAWin]);
+                sCareer.cupRound = 2;
+            } else {
+                sCareer.champion = 1;
+                sCareer.stage = STAGE_EPILOGUE;
+                career_log("KINGDOM CUP CHAMPIONS! (+%d points) One more game: the All-Stars.", pts);
+                recap("Kingdom Cup champions!");
+            }
+        } else {
+            career_log("Out of the Kingdom Cup in the %s. Your career ends here; the next Play Game starts a new one.",
+                       sCupRound[sCareer.cupRound]);
+            recap("Out in the Cup %s", sCupRound[sCareer.cupRound]);
+            sCareer.stage = STAGE_SEASON_DONE;
+        }
+    } else if (sCareer.stage == STAGE_EPILOGUE) {
+        career_log("Epilogue vs the All-Stars: %s. Season complete.", g.won == 1 ? "won" : (g.won == 0 ? "lost" : "tied"));
+        sCareer.stage = STAGE_SEASON_DONE;
     }
     career_save();
 }
@@ -1303,7 +1712,8 @@ static TextEntry* ui_xf(s32 slot, f32 x, f32 y, f32 scale, u32 color, s32 font, 
 }
 
 // --- menu state
-enum { PAGE_CREATE, PAGE_CREATE_BARS, PAGE_HUB, PAGE_ATTR, PAGE_SETTINGS, PAGE_RECRUIT };
+enum { PAGE_CREATE, PAGE_CREATE_BARS, PAGE_HUB, PAGE_ATTR, PAGE_SETTINGS, PAGE_RECRUIT, PAGE_FESTIVAL };
+enum { FE_TALENT, FE_PLAY, FE_ROWS };
 // The quick-game difficulty screen's names, easiest first.
 static const char* const sCpuName[4] = {"Weak", "Regular", "Strong", "Powerful"};
 enum { CR_BODY, CR_COLOR, CR_NAME, CR_STAR, CR_HANDS, CR_BARS, CR_CONFIRM, CR_ROWS };
@@ -1414,7 +1824,7 @@ static void card_update(void) {
     frames[2] = (sPage == PAGE_CREATE || sPage == PAGE_CREATE_BARS) ? sFamilies[sFam].ids[sColor] : sCareer.body;
     // Prospects: the prospect's face and his team's logo.
     if (sPage == PAGE_RECRUIT && sProspN > 0) {
-        frames[1] = logo_frame(sTeamCaptain[sCareer.recruitTeam]);
+        frames[1] = logo_frame(sCareer.recruitPoolN > 0 ? sCareer.recruitLogo : sTeamCaptain[sCareer.recruitTeam]);
         frames[2] = sProsp[sProspAt];
     }
     for (i = 0; i < 3; i++) {
@@ -1452,6 +1862,7 @@ static s32 page_rows(s32 page) {
     case PAGE_CREATE_BARS: return 5;
     case PAGE_HUB: return HUB_ROWS + (sCareer.recruitTier > 0 ? 1 : 0);
     case PAGE_RECRUIT: return RC_ROWS;
+    case PAGE_FESTIVAL: return FE_ROWS;
     case PAGE_ATTR: return 5;
     case PAGE_SETTINGS: return 3;
     }
@@ -1624,13 +2035,14 @@ static void labels_restore(void) {
 }
 
 static void labels_apply(void) {
-    static const char* const kWords[6][7] = {
+    static const char* const kWords[7][7] = {
         {"Character", "Color", "Title", "Encore", "Grip", "Training", "Complete"}, // PAGE_CREATE
         {"Contact", "Pitching", "Fielding", "Pace", "Complete"},                // PAGE_CREATE_BARS
         {"Play Game", "Training", "Roster", "Options", "Prospects"},            // PAGE_HUB
         {"Contact", "Pitching", "Fielding", "Pace", "Complete"},                // PAGE_ATTR
         {"Game Time", "Opponent", "Complete"},                                  // PAGE_SETTINGS
         {"Prospect", "Replace", "Complete", "Pass"},                            // PAGE_RECRUIT
+        {"Talent", "Play Game"},                                                // PAGE_FESTIVAL
     };
     LayoutObj* label = port_career_layout_obj(0x18);
     s32 i;
@@ -1728,16 +2140,29 @@ static void char_label(s32 id, char* out, size_t cap) {
     snprintf(out, cap, "%s", (id >= 0 && id < 54) ? sCharName[id] : "?");
 }
 
+// Where the waiting recruit comes from: "Peach's team", "the Star Festival", "Bowser's team".
+static const char* recruit_from(void) {
+    static char buf[32];
+    if (sCareer.recruitTeam >= 0 && sCareer.recruitTeam < TEAM_COUNT) {
+        snprintf(buf, sizeof(buf), "%s's team", sTeamName[sCareer.recruitTeam]);
+    } else {
+        snprintf(buf, sizeof(buf), "Star Festival");
+    }
+    return buf;
+}
+
 static void recruit_build(void) {
     s32 i;
     s32 j;
     sProspN = sReplN = 0;
-    if (sCareer.recruitTier > 0 && sCareer.recruitTeam >= 0 && sCareer.recruitTeam < TEAM_COUNT) {
+    if (sCareer.recruitTier > 0 && (sCareer.recruitPoolN > 0 || (sCareer.recruitTeam >= 0 && sCareer.recruitTeam < TEAM_COUNT))) {
         // Best tier first.
         s32 t;
         for (t = sCareer.recruitTier; t >= 1; t--) {
             for (i = 0; i < 9; i++) {
-                s32 id = preset_char(sCareer.recruitTeam, i);
+                s32 id = sCareer.recruitPoolN > 0 ? (i < sCareer.recruitPoolN ? sCareer.recruitPool[i] : -1)
+                                                  : preset_char(sCareer.recruitTeam, i);
+                if (id < 0) continue;
                 s32 dup = id == sCareer.body;
                 for (j = 0; j < 9; j++) dup |= sCareer.roster[j] == id;
                 for (j = 0; j < sProspN; j++) dup |= sProsp[j] == id;
@@ -1782,8 +2207,7 @@ static void recruit_sign(void) {
     career_save();
     char_label(in, a, sizeof(a));
     char_label(out, b, sizeof(b));
-    career_log("Signed %s (%s, from %s's team) in place of %s.", a, sTierName[char_tier(in)],
-               sTeamName[sCareer.recruitTeam], b);
+    career_log("Signed %s (%s, from %s) in place of %s.", a, sTierName[char_tier(in)], recruit_from(), b);
 }
 
 static void draw_card(void) {
@@ -1814,6 +2238,20 @@ static void draw_card(void) {
         ui_line(BOX_X, BOX_Y + 4 * BOX_ROW + 6, UI_GOLD, "%s", sPage == PAGE_ATTR ? "Points to spend" : "Points to place");
         ui_line(BOX_X + 240, BOX_Y + 4 * BOX_ROW + 6, UI_GOLD, "%d",
                 sPage == PAGE_ATTR ? sCareer.pointsEarned - sCareer.pointsSpent : sPool);
+    } else if (sPage == PAGE_FESTIVAL) {
+        // Talent level, then the invitees in two columns.
+        char ca[UI_CHARS] = "";
+        char cb[UI_CHARS] = "";
+        box_item(0, 120, sRow == FE_TALENT, "Talent", "%s", sFestName[sCareer.festLevel & 3]);
+        for (r = 0; r < 9; r++) {
+            s32 id = sCareer.festIds[r];
+            char* col = r < 5 ? ca : cb;
+            size_t n = strlen(col);
+            if (id < 0) continue;
+            snprintf(col + n, UI_CHARS - n, "%s%s", n ? "\n" : "", id == CHAR_ID_BRO_BOOMERANG ? "Boomerang" : sCharName[id]);
+        }
+        box_text(BOX_X, BOX_Y + BOX_ROW + 4, 17, UI_WHITE, "%s", ca);
+        box_text(BOX_X + 165, BOX_Y + BOX_ROW + 4, 17, UI_WHITE, "%s", cb);
     } else if (sPage == PAGE_RECRUIT) {
         char nm[32];
         s32 bars[4];
@@ -1848,7 +2286,23 @@ static void draw_card(void) {
         char va[UI_CHARS] = "";
         char lb[UI_CHARS] = "";
         char vb[UI_CHARS] = "";
-        if (sCareer.stage == STAGE_PROLOGUE) {
+        if (sCareer.stage >= STAGE_FESTIVAL) {
+            // Postseason: what's next, across the row.
+            switch (sCareer.stage) {
+            case STAGE_FESTIVAL: snprintf(la, sizeof(la), "Next: Star Festival\n"); break;
+            case STAGE_BOWSER: snprintf(la, sizeof(la), "Next: Bowser crashes\n"); break;
+            case STAGE_CUP:
+                if (sCareer.cupRound >= 2) snprintf(la, sizeof(la), "Final vs Bowser Jr.\n");
+                else snprintf(la, sizeof(la), "Seed %d  %s %d\n", sCareer.cupSeed[sCareer.team],
+                              sCareer.cupRound == 0 ? "QF vs" : "Semi vs", sCareer.cupSeed[cup_opponent()]);
+                break;
+            case STAGE_EPILOGUE: snprintf(la, sizeof(la), "Champions! Epilogue\n"); break;
+            default: snprintf(la, sizeof(la), "%s\n", sCareer.champion ? "Cup champions!" : "Season over"); break;
+            }
+            snprintf(va, sizeof(va), "\n");
+            snprintf(lb, sizeof(lb), "\n");
+            snprintf(vb, sizeof(vb), "\n");
+        } else if (sCareer.stage == STAGE_PROLOGUE) {
             snprintf(la, sizeof(la), "Tryout\n");
             snprintf(va, sizeof(va), "\n");
             snprintf(lb, sizeof(lb), "\n");
@@ -1896,13 +2350,18 @@ static void draw_card(void) {
         box_text(BOX_X + 170 + 70, BOX_Y + BOX_ROW, BOX_ROW, UI_GOLD, "%.2f", sCareer.seasonTwar);
     }
     // Bottom panel: your face (sprite), then the last game or the page's note.
-    if (sPage == PAGE_RECRUIT) {
+    if (sPage == PAGE_FESTIVAL) {
+        static const char* const kTop[4] = {"Generic", "Unique player", "Sub-captain", "Sub-captain"};
+        s32 lvl = sCareer.festLevel & 3;
+        box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "Star Festival");
+        box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "Win: +%d points\nrecruit up to\n%s", lvl, kTop[lvl]);
+    } else if (sPage == PAGE_RECRUIT) {
         if (sProspN > 0) {
             char nm[32];
             char_label(sProsp[sProspAt], nm, sizeof(nm));
             box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "%s", nm);
-            box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "%s\n%s's team\n%d of %d", sTierName[char_tier(sProsp[sProspAt])],
-                     sTeamName[sCareer.recruitTeam], sProspAt + 1, sProspN);
+            box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "%s\n%s\n%d of %d", sTierName[char_tier(sProsp[sProspAt])],
+                     recruit_from(), sProspAt + 1, sProspN);
         } else {
             box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "No one to sign");
             box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "They're all on\nyour team.\nPass to clear");
@@ -1953,6 +2412,10 @@ static void go_page(s32 page, s32 row) {
     if (page == PAGE_RECRUIT) {
         sProspAt = sReplAt = 0;
         recruit_build();
+    }
+    if (page == PAGE_FESTIVAL && sCareer.festIds[0] < 0) {
+        fest_build();
+        career_save();
     }
     port_career_layout_page(page_rows(page), row);
     sDirty = 1;
@@ -2145,7 +2608,16 @@ static void input_hub(u16 pr, u16 rp) {
     else if (pr & 0x100) {
         sfx(1);
         switch (sRow) {
-        case HUB_NEXT: begin_leave(LEAVE_GAME); break;
+        case HUB_NEXT:
+            if (sCareer.stage == STAGE_SEASON_DONE) {
+                career_archive(); // a new career: create your player
+                go_page(PAGE_CREATE, 0);
+            } else if (sCareer.stage == STAGE_FESTIVAL) {
+                go_page(PAGE_FESTIVAL, FE_TALENT);
+            } else {
+                begin_leave(LEAVE_GAME);
+            }
+            break;
         case HUB_ATTR: go_page(PAGE_ATTR, 0); break;
         case HUB_LINEUP: begin_leave(LEAVE_LINEUP); break;
         case HUB_SETTINGS: go_page(PAGE_SETTINGS, 0); break;
@@ -2213,7 +2685,7 @@ static void input_recruit(u16 pr, u16 rp) {
             sfx(2);
         }
     } else if ((pr & 0x100) && sRow == RC_PASS) {
-        career_log("Passed on the recruit from %s's team.", sTeamName[sCareer.recruitTeam]);
+        career_log("Passed on the recruit from %s.", recruit_from());
         sCareer.recruitTier = 0;
         career_save();
         sfx(2);
@@ -2221,6 +2693,25 @@ static void input_recruit(u16 pr, u16 rp) {
     } else if (pr & 0x200) {
         sfx(2);
         go_page(PAGE_HUB, HUB_PROSPECTS); // decide later
+    }
+}
+
+static void input_festival(u16 pr, u16 rp) {
+    if (rp & 0xC) move_row((rp & 0x8) ? -1 : 1);
+    else if ((rp & 0x3) && sRow == FE_TALENT) {
+        sCareer.festLevel = (sCareer.festLevel + 4 + ((rp & 0x2) ? 1 : -1)) & 3;
+        sCareer.festSeed++;
+        fest_build();
+        career_save();
+        sfx(0);
+        sDirty = 1;
+    } else if ((pr & 0x100) && sRow == FE_PLAY) {
+        career_save();
+        sfx(1);
+        begin_leave(LEAVE_GAME);
+    } else if (pr & 0x200) {
+        sfx(2);
+        go_page(PAGE_HUB, HUB_NEXT);
     }
 }
 
@@ -2312,6 +2803,7 @@ void port_career_scene(void) {
     case PAGE_ATTR: input_attr(pr, rp); break;
     case PAGE_SETTINGS: input_settings(pr, rp); break;
     case PAGE_RECRUIT: input_recruit(pr, rp); break;
+    case PAGE_FESTIVAL: input_festival(pr, rp); break;
     }
     if (sScene == 1 && sDirty) {
         draw_page();
