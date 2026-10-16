@@ -918,6 +918,13 @@ static BOOL setup_game(s32 arm) {
     lbl_8034E9A0.ports[3] = 0xFF;
     g_d_GameSettings.GameModeSelected = GAME_TYPE_EXHIBITION_GAME;
     g_d_GameSettings.exhibitionMatchInd = 1;
+    // DK Jungle doesn't run right on the PC port yet (port/STATUS.md: its stadium objects; the menus
+    // crash loading after a game there), so its games are at Mario Stadium until it's fixed.
+    // `career_dk_jungle = true` in user.ini plays them there anyway.
+    if (stadium == STADIUM_ID_DK_JUNGLE && !port_user_ini_bool("career_dk_jungle")) {
+        stadium = STADIUM_ID_MARIO_STADIUM;
+        if (arm) career_log("DK Jungle isn't ready on the port yet: this game is at Mario Stadium.");
+    }
     g_d_GameSettings.StadiumID = stadium;
     g_d_GameSettings.humanTeamNumber = 1;
     g_d_GameSettings.PlayerPorts[0] = 0;
