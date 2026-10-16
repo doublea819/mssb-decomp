@@ -457,6 +457,20 @@ s32 fn_80035838(void* aramAddr, u8 id) {
         lbl_803CBC94 = NULL;
         lbl_803CB810 = -1;
     }
+#ifdef TARGET_PC
+    // A load still pending for another bank (requested by a screen that went away before it
+    // finished, e.g. the game module unloading): its buffer is gone, so finishing it here would
+    // swap a stale pointer. Drop it and start this bank's load.
+    if (lbl_803CBC90 == 1 && lbl_803CB810 != id) {
+        OSReport("[bank] dropping unfinished load of id %d (slot %d) for id %u\n", (int)lbl_803CB810,
+                 (int)lbl_803CBC91, id);
+        lbl_8023D6C0[lbl_803CBC91] = -1;
+        lbl_803C4BE0[lbl_803CBC91].data = NULL;
+        lbl_803CBC90 = 0;
+        lbl_803CBC94 = NULL;
+        lbl_803CB810 = -1;
+    }
+#endif
     switch (lbl_803CBC90) {
     case 0:
         lbl_803CBC91 = spaniFindFreeSlot();
