@@ -1091,7 +1091,6 @@ static GameScore score_game(s32 slot) {
             PART(b->rbi, "RBI");
             PART(b->walks + b->hitByPitch, "BB");
             PART(b->_12, "SB");
-            PART(b->strikeouts, "K");
 #undef PART
             if (p->played && p->battersFaced > 0) {
                 snprintf(sCareer.last[2], sizeof(sCareer.last[2]), "%d.%d IP, %d K, %d R%s", p->outsPitched / 3,
@@ -2366,8 +2365,8 @@ static void draw_card(void) {
             size_t n;
             fmt_rate(avg, sizeof(avg), ab > 0 ? (double)b[SB_H] / ab : 0.0);
             fmt_rate(ops, sizeof(ops), obp + slg);
-            n = strlen(la); snprintf(la + n, sizeof(la) - n, "\nAVG\nHR\nR\n%s", q[SP_OUTS] > 0 ? "ERA\nK" : "2B\nBB");
-            n = strlen(lb); snprintf(lb + n, sizeof(lb) - n, "\nOPS\nRBI\nSB\n%s", q[SP_OUTS] > 0 ? "WHIP\nW" : "3B\nK");
+            n = strlen(la); snprintf(la + n, sizeof(la) - n, "\nAVG\nHR\nR\n%s", q[SP_OUTS] > 0 ? "ERA\nK" : "2B\nK");
+            n = strlen(lb); snprintf(lb + n, sizeof(lb) - n, "\nOPS\nRBI\nSB\n%s", q[SP_OUTS] > 0 ? "WHIP\nW" : "3B\nW");
             n = strlen(va);
             if (q[SP_OUTS] > 0) {
                 double ip = q[SP_OUTS] / 3.0;
@@ -2377,10 +2376,9 @@ static void draw_card(void) {
                 snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%.2f\n%d", ops, b[SB_RBI], b[SB_SB],
                          (q[SP_BB] + q[SP_H]) / ip, q[SP_W]);
             } else {
-                snprintf(va + n, sizeof(va) - n, "\n%s\n%d\n%d\n%d\n%d", avg, b[SB_HR], b[SB_R], b[SB_2B],
-                         b[SB_BB] + b[SB_HBP]);
+                snprintf(va + n, sizeof(va) - n, "\n%s\n%d\n%d\n%d\n%d", avg, b[SB_HR], b[SB_R], b[SB_2B], q[SP_K]);
                 n = strlen(vb);
-                snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%d\n%d", ops, b[SB_RBI], b[SB_SB], b[SB_3B], b[SB_K]);
+                snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%d\n%d", ops, b[SB_RBI], b[SB_SB], b[SB_3B], q[SP_W]);
             }
         } else {
             box_text(BOX_X, BOX_Y + 3 * BOX_ROW, BOX_ROW, UI_WHITE, "No season games yet");
