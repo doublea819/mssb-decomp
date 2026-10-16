@@ -86,7 +86,7 @@ enum { STAGE_PROLOGUE = 0, STAGE_CHAPTERS = 1, STAGE_FESTIVAL = 2, STAGE_BOWSER 
        STAGE_EPILOGUE = 5, STAGE_SEASON_DONE = 9 };
 
 enum { SB_G, SB_PA, SB_AB, SB_H, SB_2B, SB_3B, SB_HR, SB_RBI, SB_R, SB_BB, SB_HBP, SB_K, SB_SB, SB_COUNT };
-enum { SP_G, SP_OUTS, SP_K, SP_BB, SP_H, SP_R, SP_ER, SP_HR, SP_COUNT };
+enum { SP_G, SP_OUTS, SP_K, SP_BB, SP_H, SP_R, SP_ER, SP_HR, SP_W, SP_COUNT };
 
 typedef struct CareerState {
     s32 stage;         // STAGE_*
@@ -1091,10 +1091,11 @@ static GameScore score_game(s32 slot) {
             PART(b->rbi, "RBI");
             PART(b->walks + b->hitByPitch, "BB");
             PART(b->_12, "SB");
+            PART(b->strikeouts, "K");
 #undef PART
             if (p->played && p->battersFaced > 0) {
-                snprintf(sCareer.last[2], sizeof(sCareer.last[2]), "%d.%d IP, %d K, %d R", p->outsPitched / 3,
-                         p->outsPitched % 3, p->strikeouts, p->_02);
+                snprintf(sCareer.last[2], sizeof(sCareer.last[2]), "%d.%d IP, %d K, %d R%s", p->outsPitched / 3,
+                         p->outsPitched % 3, p->strikeouts, p->_02, p->wins ? ", W" : "");
             } else {
                 sCareer.last[2][0] = '\0';
             }
@@ -1123,6 +1124,7 @@ static GameScore score_game(s32 slot) {
                     q[SP_R] += p->_02;
                     q[SP_ER] += p->_04;
                     q[SP_HR] += p->homeRunsAllowed;
+                    q[SP_W] += p->wins;
                 }
             }
         }
@@ -1678,6 +1680,40 @@ static TextEntry* ui_on(s32 slot, s32 dx, s32 dy, u32 color, s32 font, s32 halig
     return e;
 }
 
+// Screen-space text at (x, y), scaled by `scale` (the text system's own screen transform,
+// fn_800100A4, with a scale on the glyphs). `pitch`: line pitch in screen pixels.
+extern f32 lbl_803CBBDC;
+extern f32 lbl_803CBBE0;
+static Mtx sSmall[UI_LINES];
+static TextEntry* ui_small(s32 x, s32 y, f32 scale, s32 pitch, u32 color, const char* fmt, ...)
+    __attribute__((format(printf, 6, 7)));
+static TextEntry* ui_small(s32 x, s32 y, f32 scale, s32 pitch, u32 color, const char* fmt, ...) {
+    va_list ap;
+    TextEntry* e;
+    Mtx a;
+    Mtx b;
+    f32 k = lbl_803CBBE0 / lbl_803CBBDC;
+    va_start(ap, fmt);
+    e = ui_new(color, 1, fmt, ap);
+    va_end(ap);
+    if (e == NULL) {
+        return NULL;
+    }
+    // z at -lbl_803CBBE0 (as the screen path), screen scale, position, glyph scale.
+    PSMTXScale(a, k * scale, k * scale, 1.0f);
+    a[0][3] = k * (x - 320);
+    a[1][3] = k * (y - 224);
+    a[2][3] = -lbl_803CBBE0;
+    PSMTXCopy(a, b);
+    PSMTXCopy(b, sSmall[sUiCount - 1]);
+    e->mtx = sSmall[sUiCount - 1];
+    e->x = 0;
+    e->y = 0;
+    e->lineSpacing = (s8)((f32)pitch / scale - 18.0f);
+    e->charSpacing = -1;
+    return e;
+}
+
 // Centered text at (x, y) of sprite `slot`'s space, scaled.
 static TextEntry* ui_xf(s32 slot, f32 x, f32 y, f32 scale, u32 color, s32 font, const char* fmt, ...)
     __attribute__((format(printf, 7, 8)));
@@ -2080,6 +2116,13 @@ static void labels_apply(void) {
 #define LOW_X 336
 #define LOW_Y 313
 #define LOW_ROW 16
+// The hub's stats grid (90% text): label / value columns and the row pitch.
+#define HUB_Y 189
+#define HUB_ROW 16
+#define HUB_LA 282
+#define HUB_VA 370
+#define HUB_LB 447
+#define HUB_VB 509
 
 static TextEntry* box_text(s32 x, s32 y, s32 pitch, u32 color, const char* fmt, ...)
     __attribute__((format(printf, 5, 6)));
@@ -2323,30 +2366,44 @@ static void draw_card(void) {
             size_t n;
             fmt_rate(avg, sizeof(avg), ab > 0 ? (double)b[SB_H] / ab : 0.0);
             fmt_rate(ops, sizeof(ops), obp + slg);
-            n = strlen(la); snprintf(la + n, sizeof(la) - n, "\nAVG\nHR\nR\n%s", q[SP_OUTS] > 0 ? "ERA" : "2B");
-            n = strlen(lb); snprintf(lb + n, sizeof(lb) - n, "\nOPS\nRBI\nSB\n%s", q[SP_OUTS] > 0 ? "WHIP" : "3B");
+            n = strlen(la); snprintf(la + n, sizeof(la) - n, "\nAVG\nHR\nR\n%s", q[SP_OUTS] > 0 ? "ERA\nK" : "2B\nBB");
+            n = strlen(lb); snprintf(lb + n, sizeof(lb) - n, "\nOPS\nRBI\nSB\n%s", q[SP_OUTS] > 0 ? "WHIP\nW" : "3B\nK");
             n = strlen(va);
             if (q[SP_OUTS] > 0) {
                 double ip = q[SP_OUTS] / 3.0;
-                snprintf(va + n, sizeof(va) - n, "\n%s\n%d\n%d\n%.2f", avg, b[SB_HR], b[SB_R], 9.0 * q[SP_ER] / ip);
+                snprintf(va + n, sizeof(va) - n, "\n%s\n%d\n%d\n%.2f\n%d", avg, b[SB_HR], b[SB_R], 9.0 * q[SP_ER] / ip,
+                         q[SP_K]);
                 n = strlen(vb);
-                snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%.2f", ops, b[SB_RBI], b[SB_SB], (q[SP_BB] + q[SP_H]) / ip);
+                snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%.2f\n%d", ops, b[SB_RBI], b[SB_SB],
+                         (q[SP_BB] + q[SP_H]) / ip, q[SP_W]);
             } else {
-                snprintf(va + n, sizeof(va) - n, "\n%s\n%d\n%d\n%d", avg, b[SB_HR], b[SB_R], b[SB_2B]);
+                snprintf(va + n, sizeof(va) - n, "\n%s\n%d\n%d\n%d\n%d", avg, b[SB_HR], b[SB_R], b[SB_2B],
+                         b[SB_BB] + b[SB_HBP]);
                 n = strlen(vb);
-                snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%d", ops, b[SB_RBI], b[SB_SB], b[SB_3B]);
+                snprintf(vb + n, sizeof(vb) - n, "\n%s\n%d\n%d\n%d\n%d", ops, b[SB_RBI], b[SB_SB], b[SB_3B], b[SB_K]);
             }
         } else {
             box_text(BOX_X, BOX_Y + 3 * BOX_ROW, BOX_ROW, UI_WHITE, "No season games yet");
         }
-        box_text(BOX_X, BOX_Y, BOX_ROW, UI_WHITE, "%s", la);
-        box_text(BOX_X + 92, BOX_Y, BOX_ROW, UI_WHITE, "%s", va);
-        box_text(BOX_X + 170, BOX_Y, BOX_ROW, UI_WHITE, "%s", lb);
-        box_text(BOX_X + 170 + 70, BOX_Y, BOX_ROW, UI_WHITE, "%s", vb);
-        box_text(BOX_X, BOX_Y + BOX_ROW, BOX_ROW, UI_GOLD, "iWAR");
-        box_text(BOX_X + 92, BOX_Y + BOX_ROW, BOX_ROW, UI_GOLD, "%.2f", sCareer.seasonIwar);
-        box_text(BOX_X + 170, BOX_Y + BOX_ROW, BOX_ROW, UI_GOLD, "tWAR");
-        box_text(BOX_X + 170 + 70, BOX_Y + BOX_ROW, BOX_ROW, UI_GOLD, "%.2f", sCareer.seasonTwar);
+        // Seven rows at 90% size, 16 px apart, between the logos and the bottom of the panel.
+        {
+            const f32 sc = 0.9f;
+            const s32 y0 = HUB_Y;
+            // The WAR row a little smaller when both are in double digits.
+            f32 wsc = (sCareer.seasonIwar >= 10.0f || sCareer.seasonIwar <= -10.0f) &&
+                              (sCareer.seasonTwar >= 10.0f || sCareer.seasonTwar <= -10.0f)
+                          ? 0.78f
+                          : sc;
+            s32 wy = y0 + HUB_ROW + (s32)((sc - wsc) * 9.0f);
+            ui_small(HUB_LA, y0, sc, HUB_ROW, UI_WHITE, "%s", la);
+            ui_small(HUB_VA, y0, sc, HUB_ROW, UI_WHITE, "%s", va);
+            ui_small(HUB_LB, y0, sc, HUB_ROW, UI_WHITE, "%s", lb);
+            ui_small(HUB_VB, y0, sc, HUB_ROW, UI_WHITE, "%s", vb);
+            ui_small(HUB_LA, wy, wsc, HUB_ROW, UI_GOLD, "iWAR");
+            ui_small(HUB_VA, wy, wsc, HUB_ROW, UI_GOLD, "%.2f", sCareer.seasonIwar);
+            ui_small(HUB_LB, wy, wsc, HUB_ROW, UI_GOLD, "tWAR");
+            ui_small(HUB_VB, wy, wsc, HUB_ROW, UI_GOLD, "%.2f", sCareer.seasonTwar);
+        }
     }
     // Bottom panel: your face (sprite), then the last game or the page's note.
     if (sPage == PAGE_FESTIVAL) {
