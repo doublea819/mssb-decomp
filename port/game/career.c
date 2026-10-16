@@ -432,6 +432,7 @@ static void apply_lineup(void) {
 }
 
 static BOOL setup_game(s32 arm);
+static void apply_player_ratings(CharacterStats* me);
 
 // Main menu, Career picked: set up the next career game. Returns TRUE when a game is set up.
 BOOL port_career_setup_next_game(void) {
@@ -565,6 +566,11 @@ static BOOL setup_game(s32 arm) {
             sMySlot = i;
         }
     }
+    // Your player's own ratings and Star Special, on this game's copy of your player only
+    // (inMemRoster); the shared character table, and so every other Toad, is untouched.
+    if (sMySlot >= 0 && sCareer.created) {
+        apply_player_ratings(&inMemRoster[0][sMySlot]);
+    }
     // Your bat / throw hands (Create Your Player), unless the lineup screen set them since.
     if (sMySlot >= 0 && !lineup_matches()) {
         if (sCareer.bats >= 0) inMemRoster[0][sMySlot].stats.BattingStance = (u8)sCareer.bats;
@@ -612,6 +618,77 @@ static BOOL setup_game(s32 arm) {
                    sTeamName[sOppTeam], sCareer.game + 1, sMySlot);
     }
     return TRUE;
+}
+
+// ---------------------------------------------------------------- your ratings in the game
+// The four bars are display values; the game plays from the stats behind them (game_batter.c,
+// rep_1188.c, rep_1200.c). Each bar's stats move with the bar the way they do across the cast:
+// for every stat, the least-squares slope against its bar over all 54 characters. Your body's
+// own stats are the base, moved by (your bar - your body's bar) bars.
+// Record offsets: 0x00 CurveBallSpeed, 0x01 FastBallSpeed, 0x03 Curve, 0x04 curveControl,
+// 0x28/0x29 slap/charge contact, 0x2A/0x2B slap/charge power, 0x2F Speed, 0x30 ThrowingArm;
+// bars 0x37 batting, 0x38 pitching, 0x39 running, 0x3A fielding.
+typedef struct BarStat {
+    u8 bar;  // record offset of the bar
+    u8 stat; // record offset of the stat
+} BarStat;
+static const BarStat kBarStats[] = {
+    {0x37, 0x28}, {0x37, 0x29}, {0x37, 0x2A}, {0x37, 0x2B}, // batting: contact, power
+    {0x38, 0x00}, {0x38, 0x01}, {0x38, 0x03}, {0x38, 0x04}, // pitching: speeds, curve, control
+    {0x39, 0x2F},                                           // running: speed
+    {0x3A, 0x30},                                           // fielding: arm
+};
+// Bar offset -> index in sCareer.bars (Batting, Pitching, Fielding, Speed).
+static s32 bar_index(u8 bar) {
+    switch (bar) {
+    case 0x37: return 0;
+    case 0x38: return 1;
+    case 0x3A: return 2;
+    default: return 3; // 0x39 running
+    }
+}
+
+static void apply_player_ratings(CharacterStats* me) {
+    static const u8 kStarType[12] = {1, 2, 11, 12, 9, 10, 5, 6, 3, 4, 7, 8}; // sStarChars -> CAPTAIN_STAR_TYPE
+    const u8* body = (const u8*)&lbl_8034E9A0.roster[sCareer.body / 9][sCareer.body % 9];
+    u8* m = (u8*)me;
+    s32 k;
+    for (k = 0; k < (s32)(sizeof(kBarStats) / sizeof(kBarStats[0])); k++) {
+        f64 sx = 0, sy = 0, sxx = 0, sxy = 0, n = 0, slope, v;
+        s32 lo = 255;
+        s32 hi = 0;
+        s32 id;
+        s32 delta = sCareer.bars[bar_index(kBarStats[k].bar)] - body[kBarStats[k].bar];
+        for (id = 0; id < 54; id++) {
+            const u8* r = (const u8*)&lbl_8034E9A0.roster[id / 9][id % 9];
+            f64 x = r[kBarStats[k].bar];
+            f64 y = r[kBarStats[k].stat];
+            sx += x; sy += y; sxx += x * x; sxy += x * y; n += 1;
+            if (r[kBarStats[k].stat] < lo) lo = r[kBarStats[k].stat];
+            if (r[kBarStats[k].stat] > hi) hi = r[kBarStats[k].stat];
+        }
+        slope = (n * sxx - sx * sx) != 0 ? (n * sxy - sx * sy) / (n * sxx - sx * sx) : 0;
+        if (slope < 0) slope = 0;
+        v = body[kBarStats[k].stat] + slope * delta;
+        // Past the best in the cast by at most a tenth (the game caps Speed at 200 itself).
+        if (v > hi + (hi - lo) / 10.0) v = hi + (hi - lo) / 10.0;
+        if (v < 1) v = 1;
+        if (v > 255) v = 255;
+        m[kBarStats[k].stat] = (u8)(v + 0.5);
+    }
+    // The bars themselves, for the game's own screens (lineup screen).
+    m[0x37] = (u8)sCareer.bars[0];
+    m[0x38] = (u8)sCareer.bars[1];
+    m[0x3A] = (u8)sCareer.bars[2];
+    m[0x39] = (u8)sCareer.bars[3];
+    // Star Special: any captain's star move. The game picks the captain-type star whenever this is
+    // non-zero (game_batter.c, rep_1200.c); as a non-captain you pay the non-captain price.
+    if (sCareer.star >= 0 && sCareer.star < 12) {
+        me->stats.CaptainStarHitPitch = kStarType[sCareer.star];
+    }
+    career_log("Your ratings in the game: contact %d/%d power %d/%d, pitch speed %d/%d curve %d control %d, speed %d, arm %d, star %d",
+               m[0x28], m[0x29], m[0x2A], m[0x2B], m[0x00], m[0x01], m[0x03], m[0x04], m[0x2F], m[0x30],
+               me->stats.CaptainStarHitPitch);
 }
 
 // ---------------------------------------------------------------- scoring
@@ -1541,8 +1618,8 @@ static void labels_apply(void) {
 #define BOX_Y 194    // first row
 #define BOX_ROW 18   // row pitch
 #define LOW_X 336
-#define LOW_Y 319
-#define LOW_ROW 17
+#define LOW_Y 313
+#define LOW_ROW 16
 
 static TextEntry* box_text(s32 x, s32 y, s32 pitch, u32 color, const char* fmt, ...)
     __attribute__((format(printf, 5, 6)));
