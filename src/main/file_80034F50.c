@@ -114,6 +114,7 @@ static inline void spaniClearSlot(s32 id) {
 #ifdef TARGET_PC
 static void* s_slotEntry[SPANI_TEX_SLOT_COUNT];
 static void* s_loadData; // the buffer fn_80035838's pending load was started with
+static s32 s_loadSlot = -1; // and its slot
 // macOS keeps the low 4 GB unmapped, so a host heap pointer below it is garbage (64-bit hosts only).
 #if UINTPTR_MAX > 0xFFFFFFFFu
 #define PORT_BAD_PTR(p) ((uintptr_t)(p) < 0x100000000ull)
@@ -503,6 +504,7 @@ s32 fn_80035838(void* aramAddr, u8 id) {
 #ifdef TARGET_PC
         s_slotEntry[lbl_803CBC91] = aramAddr;
         s_loadData = lbl_803C4BE0[lbl_803CBC91].data; // checked when the load finishes
+        s_loadSlot = lbl_803CBC91;
         if (PORT_BAD_PTR(s_loadData)) {
             OSReport("[bank] load id %u: ARAMTransfer returned %p (slot %d)\n", id, s_loadData, (int)lbl_803CBC91);
         }
@@ -516,6 +518,19 @@ s32 fn_80035838(void* aramAddr, u8 id) {
             SpaniTexSlot* s = lbl_803C4BE0;
             SpaniAnim** pa;
             s32* hdr;
+#ifdef TARGET_PC
+            // The slot number must be the one the load started with (always < 20).
+            if (s_loadSlot >= 0 && (s32)lbl_803CBC91 != s_loadSlot) {
+                OSReport("[bank] load id %u: slot number changed from %d to %d mid-load; restoring\n", id,
+                         (int)s_loadSlot, (int)lbl_803CBC91);
+                lbl_803CBC91 = (u8)s_loadSlot;
+            }
+            if (lbl_803CBC91 >= SPANI_TEX_SLOT_COUNT) {
+                OSReport("[bank] load id %u: slot %d out of range; reloading\n", id, (int)lbl_803CBC91);
+                lbl_803CBC90 = 0;
+                break;
+            }
+#endif
             s += lbl_803CBC91;
             pa = &s->anim;
             hdr = s->data;
@@ -971,6 +986,11 @@ Mtx lbl_800F78E0[4] = {
 
 // .bss 0x801F8640..0x8023DD80 (MWCC lays these out in reverse definition order)
 s16 lbl_8023D6C0[0x360];
+#ifdef TARGET_PC
+// Display-list memory: 32-byte aligned as on GameCube (GX lists need it). Unaligned, it started one
+// byte after lbl_803CBC91 (the bank loader's slot number), which got overwritten mid-load.
+__attribute__((aligned(32)))
+#endif
 u8 lbl_801F86C0[2 * SPRITE_DL_POOL];
 Mtx44 lbl_801F8680;
 Mtx44 lbl_801F8640;
