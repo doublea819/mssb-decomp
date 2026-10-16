@@ -604,18 +604,25 @@ static void fest_build(void) {
     for (; out < 9; out++) sCareer.festIds[out] = -1;
 }
 
-// Kingdom Cup seed from the regular-season wins.
+// Kingdom Cup seed from the regular-season wins. Never 4 or 5: those play for Bowser Jr.'s side.
 static s32 cup_my_seed(void) {
     s32 w = sCareer.regWins;
-    if (w <= 1) return 6;
-    if (w <= 4) return 5;
-    if (w <= 7) return 4;
+    if (w <= 4) return 6;
     if (w <= 9) return 3;
     return 2;
 }
 
-// The bracket: Bowser Jr. (1) has a bye on one side; you're always on the other side, so you only
-// meet him in the final. Bowser Jr. wins all of his games. The other seeds are random.
+// The team holding a seed.
+static s32 cup_team_at(s32 seed) {
+    s32 t;
+    for (t = 0; t < TEAM_COUNT; t++) {
+        if (sCareer.cupSeed[t] == seed) return t;
+    }
+    return -1;
+}
+
+// The bracket by seed: 1 (Bowser Jr., bye) vs the winner of 4-5; 2 (bye) vs the winner of 3-6. You're
+// 2, 3 or 6, so you only meet Bowser Jr. in the final. He wins all of his games. Other seeds random.
 static void cup_start(void) {
     s32 others[4];
     s32 seeds[4];
@@ -636,25 +643,17 @@ static void cup_start(void) {
     sCareer.cupSeed[TEAM_BOWSER] = 1;
     sCareer.cupSeed[sCareer.team] = my;
     for (i = 0; i < 4; i++) sCareer.cupSeed[others[i]] = seeds[i];
+    sCareer.cupA[0] = cup_team_at(4);
+    sCareer.cupA[1] = cup_team_at(5);
+    sCareer.cupBye = cup_team_at(2);
     if (my == 2) {
-        sCareer.cupBye = sCareer.team;
-        sCareer.cupQf[0] = others[0];
-        sCareer.cupQf[1] = others[1];
-        sCareer.cupA[0] = others[2];
-        sCareer.cupA[1] = others[3];
+        sCareer.cupQf[0] = cup_team_at(3);
+        sCareer.cupQf[1] = cup_team_at(6);
         sCareer.cupQfWin = sCareer.cupQf[rnd(2)];
         sCareer.cupRound = 1;
     } else {
-        s32 rest[3];
-        s32 r = 0;
-        for (i = 0; i < 4; i++) {
-            if (sCareer.cupSeed[others[i]] == 2) sCareer.cupBye = others[i];
-            else rest[r++] = others[i];
-        }
         sCareer.cupQf[0] = sCareer.team;
-        sCareer.cupQf[1] = rest[0];
-        sCareer.cupA[0] = rest[1];
-        sCareer.cupA[1] = rest[2];
+        sCareer.cupQf[1] = cup_team_at(my == 3 ? 6 : 3);
         sCareer.cupQfWin = sCareer.team;
         sCareer.cupRound = 0;
     }
