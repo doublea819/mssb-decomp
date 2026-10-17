@@ -96,6 +96,8 @@ constexpr size_t kUsableSize = 0xE0000000u;
 constexpr size_t kGuardSize = 1 << 20;
 
 uintptr_t s_base = 0;
+size_t s_reserved = kReserveSize; // smaller on Apple TV (see init_region)
+size_t s_usable = kUsableSize;
 uintptr_t s_top = 0;       // current break
 uintptr_t s_committed = 0; // end of the read/write mapped part
 
@@ -108,21 +110,29 @@ void init_region()
     void* p = mmap(nullptr, kReserveSize * 2, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
     if (p == MAP_FAILED)
     {
-        // A smaller address space (Apple TV has no extended-virtual-addressing entitlement):
-        // ask for exactly 4 GB at 4 GB-aligned addresses until one is free.
-        for (uintptr_t hint = 2 * kReserveSize; hint <= 64 * kReserveSize; hint += kReserveSize)
+        // A small address space (Apple TV: no extended-virtual-addressing entitlement). The
+        // base only has to be 4 GB-aligned (low 32 bits = offset); the heap itself can be
+        // smaller. Try 4 GB-aligned addresses with smaller and smaller sizes.
+        static const size_t kSizes[] = {kReserveSize, 2ull << 30, 1ull << 30, 512ull << 20};
+        for (size_t size : kSizes)
         {
-            void* q = mmap((void*)hint, kReserveSize, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
-            if (q == MAP_FAILED)
-                continue;
-            if ((uintptr_t)q == hint)
+            for (uintptr_t hint = kReserveSize; hint <= 64 * kReserveSize; hint += kReserveSize)
             {
-                s_base = hint;
-                s_top = s_base + kGuardSize;
-                s_committed = s_top;
-                return;
+                void* q = mmap((void*)hint, size, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+                if (q == MAP_FAILED)
+                    continue;
+                if ((uintptr_t)q == hint)
+                {
+                    s_base = hint;
+                    s_reserved = size;
+                    s_usable = size < kUsableSize ? size : kUsableSize;
+                    s_top = s_base + kGuardSize;
+                    s_committed = s_top;
+                    fprintf(stderr, "[heap] reserved %zu MB at %#lx\n", size >> 20, (unsigned long)hint);
+                    return;
+                }
+                munmap(q, size);
             }
-            munmap(q, kReserveSize);
         }
         fprintf(stderr, "FATAL: couldn't reserve the game heap\n");
         abort();
@@ -270,7 +280,7 @@ void* guard_alloc(size_t size, size_t alignment)
     {
         uintptr_t need = (pages + 1) * s_pageSize;
         if (s_guardTop == 0)
-            s_guardTop = s_base + kReserveSize;
+            s_guardTop = s_base + s_reserved;
         if (s_guardTop - need < s_top + (64u << 20))
         {
             fprintf(stderr, "[heap] guard mode out of address space\n");
@@ -316,7 +326,7 @@ void* port_heap_sbrk(ptrdiff_t increment)
     if (increment <= 0)
         return (void*)old;
     uintptr_t newTop = old + (uintptr_t)increment;
-    if (newTop > s_base + kUsableSize)
+    if (newTop > s_base + s_usable)
         return (void*)~(uintptr_t)0; // MFAIL
     if (newTop > s_committed)
     {
@@ -396,7 +406,7 @@ uintptr_t port_heap_base(void)
 int port_heap_contains(const void* p)
 {
     uintptr_t v = (uintptr_t)p;
-    return s_base != 0 && v >= s_base && v < s_base + kReserveSize;
+    return s_base != 0 && v >= s_base && v < s_base + s_reserved;
 }
 
 } // extern "C"
