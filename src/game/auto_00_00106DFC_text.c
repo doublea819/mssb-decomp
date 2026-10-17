@@ -1680,6 +1680,14 @@ void fn_3_10F684(void) {
     g_Minigame._1907 = 1;
     g_Minigame.multiPlayerInd = 1;
     g_Minigame.soloMinigameDifficulty = 0;
+#ifdef TARGET_PC
+    {
+        extern s32 port_career_training_active(void);
+        if (port_career_training_active()) {
+            g_Minigame.soloMinigameDifficulty = 1; // Career training: always the Flower level
+        }
+    }
+#endif
     for (j = 0; j < 6; j++) {
         picks[j] = lbl_3_data_1894C[g_Minigame.GameMode_MiniGame][j + 1];
     }
@@ -1925,6 +1933,9 @@ void fn_3_1084B4(void) {
             g_d_GameSettings._13 = 1;
             fn_3_11CF84();
             fn_8004CC18();
+#ifdef TARGET_PC
+            { extern void port_career_training_exit(s32 result); port_career_training_exit(-1); }
+#endif
             g_GameLogic.framesOfExitingToMenu = 1;
         }
         break;
@@ -3224,6 +3235,9 @@ void fn_3_10A0A0(void) {
         fn_3_15F998();
         fn_3_147DFC();
         fn_3_11CF84();
+#ifdef TARGET_PC
+        { extern void port_career_training_exit(s32 result); port_career_training_exit(g_Minigame._1A37); }
+#endif
         g_GameLogic.framesOfExitingToMenu = 1;
         break;
     }

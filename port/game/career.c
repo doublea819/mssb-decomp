@@ -143,6 +143,7 @@ typedef struct CareerState {
     // intro was shown.
     u32 pend[3];
     s32 preSeen;
+    s32 trained; // chapter + 1 whose training minigame has been played
 } CareerState;
 
 static CareerState sCareer;
@@ -228,6 +229,7 @@ static void career_save(void) {
     fprintf(f, "\nrpool = %d %d", sCareer.recruitPoolN, sCareer.recruitLogo);
     for (i = 0; i < 9; i++) fprintf(f, " %d", sCareer.recruitPool[i]);
     fprintf(f, "\nscenes = %u %u %u %d", sCareer.pend[0], sCareer.pend[1], sCareer.pend[2], sCareer.preSeen);
+    fprintf(f, "\ntrain = %d", sCareer.trained);
     fprintf(f, "\ncup =");
     for (i = 0; i < TEAM_COUNT; i++) fprintf(f, " %d", sCareer.cupSeed[i]);
     fprintf(f, " %d %d %d %d %d %d %d %d\n", sCareer.cupRound, sCareer.cupA[0], sCareer.cupA[1], sCareer.cupAWin,
@@ -312,6 +314,7 @@ static void career_load(void) {
                    &sCareer.hasLast);
         }
         else if (K("hands")) sscanf(val, "%d %d", &sCareer.bats, &sCareer.throws);
+        else if (K("train")) sCareer.trained = atoi(val);
         else if (K("scenes")) sscanf(val, "%u %u %u %d", &sCareer.pend[0], &sCareer.pend[1], &sCareer.pend[2], &sCareer.preSeen);
         else if (K("post")) sscanf(val, "%d %d %d %d %d", &sCareer.regWins, &sCareer.regLosses, &sCareer.festLevel,
                                    &sCareer.festSeed, &sCareer.champion);
@@ -1312,11 +1315,83 @@ static void build_team_roster(s32 team) {
 // Back in the menus after a career game (scored, or quit from the pause menu): the main menu opens
 // the Career menu (fn_2_1F30 / fn_2_1800). Clears sArmed so a quit game isn't scored later.
 static s32 sReturnHub;
+static s32 sTrainArmed; // a training minigame was set up and hasn't finished
 s32 port_career_return_pending(void) {
-    s32 r = sReturnHub || sArmed;
+    s32 r = sReturnHub || sArmed || sTrainArmed;
+    sTrainArmed = 0;
     sReturnHub = 0;
     sArmed = 0;
     return r;
+}
+
+// --- Training: each chapter opens with its stadium's minigame (after the arrival scene, before
+// game 1), always at the Flower level. Clearing it pays 1 attribute point; the chapter pays one less.
+// It runs the way Challenge mode starts a minigame (fn_2_4C9C4: mode 7, exhibitionMatchInd 0): no
+// select screen, your player in port 0, the goal of the level (pointsReqToWin_challenge); the result
+// is g_Minigame._1A37 (1 cleared, 2 missed), handed over by port_career_training_exit.
+static const u8 kTrainGame[TEAM_COUNT] = {1, 2, 4, 3, 5, 0}; // by the chapter's team: Derby, Wall Ball, ...
+static const char* const kTrainName[8] = {"",           "Bob-omb Derby", "Wall Ball", "Barrel Batter",
+                                          "Chain Chomp Sprint", "Piranha Panic", "Star Dash", ""};
+static s32 sTrainDiff; // the Challenge difficulty byte, put back afterwards
+
+static s32 training_due(void) {
+    return sCareer.stage == STAGE_CHAPTERS && sCareer.game == 0 && sCareer.trained != sCareer.chapter + 1 &&
+           kTrainGame[career_chapter_team(sCareer.chapter)] != 0;
+}
+
+static void setup_training(void) {
+    s32 m = kTrainGame[career_chapter_team(sCareer.chapter)];
+    lbl_8034E9A0.ports[0] = 0;
+    lbl_8034E9A0.ports[1] = 0xFF;
+    lbl_8034E9A0.ports[2] = 0xFF;
+    lbl_8034E9A0.ports[3] = 0xFF;
+    g_d_GameSettings.GameModeSelected = GAME_TYPE_MINIGAMES;
+    g_d_GameSettings.exhibitionMatchInd = 0; // Challenge's route: straight into the minigame
+    g_d_GameSettings._33 = (u8)m;            // the minigame
+    g_d_GameSettings._35 = 0;                // your port
+    g_d_GameSettings._36 = (u8)sCareer.body; // your character
+    g_d_GameSettings.bJMatchInd = 0;
+    sTrainDiff = g_d_GameSettings.challengeDifficulty;
+    g_d_GameSettings.challengeDifficulty = 0;
+    sTrainArmed = 1;
+    career_log("Training before chapter %d: %s (Flower level).", sCareer.chapter + 1, kTrainName[m]);
+}
+
+s32 port_career_training_active(void) {
+    return sTrainArmed;
+}
+
+// From the minigame's exit (fn_3_10A0A0, or the pause menu's quit with result -1). The menus come
+// back as after an exhibition game, so the main menu opens the Career menu.
+void port_career_training_exit(s32 result) {
+    s32 m, ok;
+    if (!sTrainArmed) {
+        return;
+    }
+    sTrainArmed = 0;
+    sReturnHub = 1;
+    g_d_GameSettings.exhibitionMatchInd = 1;
+    g_d_GameSettings.GameModeSelected = GAME_TYPE_EXHIBITION_GAME;
+    g_d_GameSettings.challengeDifficulty = (u8)sTrainDiff;
+    if (result != 1 && result != 2) {
+        career_log("Training quit: it's still waiting on Play Game.");
+        return;
+    }
+    career_load();
+    m = kTrainGame[career_chapter_team(sCareer.chapter)];
+    ok = result == 1;
+    sCareer.trained = sCareer.chapter + 1;
+    if (ok) sCareer.pointsEarned++;
+    career_log("Training %s: %s. %s", ok ? "cleared" : "missed", kTrainName[m],
+               ok ? "+1 attribute point." : "No attribute point.");
+    sRecapCount = 0;
+    recap("%s: %s", kTrainName[m], ok ? "CLEARED" : "MISSED");
+    recap("%s", ok ? "+1 attribute point" : "No attribute point");
+    snprintf(sCareer.last[0], sizeof(sCareer.last[0]), "%s", kTrainName[m]);
+    snprintf(sCareer.last[1], sizeof(sCareer.last[1]), "%s", ok ? "Training cleared!" : "Training missed");
+    snprintf(sCareer.last[2], sizeof(sCareer.last[2]), "%s", ok ? "+1 attribute point" : "No point this time");
+    sCareer.hasLast = 0;
+    career_save();
 }
 
 // Called right after the game's end-of-game bookkeeping (fn_3_76558).
@@ -1389,7 +1464,9 @@ void port_career_game_final(void) {
         if (g.won == 1) sCareer.chapterWins++;
         sCareer.game++;
         if (sCareer.game >= 3) {
-            s32 pts = tier_points(chapter_points(sCareer.chapterIwar), 4, chapter_max());
+            // A chapter whose training minigame was played pays one point less here (the training paid it).
+            s32 pts = tier_points(chapter_points(sCareer.chapterIwar), 4,
+                                  chapter_max() - (sCareer.trained == sCareer.chapter + 1 ? 1 : 0));
             sCareer.pointsEarned += pts;
             career_log("Chapter %d done vs %s: %d-%d in the series. iWAR %.2f -> %d attribute points. tWAR %.2f -> "
                        "recruit %s.",
@@ -3315,7 +3392,11 @@ void port_career_scene(void) {
             fn_2_11A0(5);
             break;
         case LEAVE_GAME:
-            setup_game(1);
+            if (training_due()) {
+                setup_training(); // a chapter opens with its stadium's minigame
+            } else {
+                setup_game(1);
+            }
             port_menus_start_game();
             break;
         case LEAVE_LINEUP:
