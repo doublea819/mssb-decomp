@@ -20,6 +20,7 @@
 #include "main/charsel_state_type.h"
 #include "main/menu_globals.h" // SavedSettings
 #include "game/auto_00_000759BC_text.h" // BattingRecord, PitchingRecord, LineScore
+#include "career_scenes.h"                // the cutscene script (career_scenes.c)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -138,6 +139,10 @@ typedef struct CareerState {
     s32 cupBye;             // your side's bye (your own team when you're the 2 seed)
     s32 cupQf[2], cupQfWin; // your side's quarterfinal (cupQf[0] is you when you play in it)
     s32 champion;           // won the Kingdom Cup
+    // Cutscenes: the last game's scenes (played from the next Play Game) and the game whose
+    // intro was shown.
+    u32 pend[3];
+    s32 preSeen;
 } CareerState;
 
 static CareerState sCareer;
@@ -222,6 +227,7 @@ static void career_save(void) {
     for (i = 0; i < 9; i++) fprintf(f, " %d", sCareer.festIds[i]);
     fprintf(f, "\nrpool = %d %d", sCareer.recruitPoolN, sCareer.recruitLogo);
     for (i = 0; i < 9; i++) fprintf(f, " %d", sCareer.recruitPool[i]);
+    fprintf(f, "\nscenes = %u %u %u %d", sCareer.pend[0], sCareer.pend[1], sCareer.pend[2], sCareer.preSeen);
     fprintf(f, "\ncup =");
     for (i = 0; i < TEAM_COUNT; i++) fprintf(f, " %d", sCareer.cupSeed[i]);
     fprintf(f, " %d %d %d %d %d %d %d %d\n", sCareer.cupRound, sCareer.cupA[0], sCareer.cupA[1], sCareer.cupAWin,
@@ -306,6 +312,7 @@ static void career_load(void) {
                    &sCareer.hasLast);
         }
         else if (K("hands")) sscanf(val, "%d %d", &sCareer.bats, &sCareer.throws);
+        else if (K("scenes")) sscanf(val, "%u %u %u %d", &sCareer.pend[0], &sCareer.pend[1], &sCareer.pend[2], &sCareer.preSeen);
         else if (K("post")) sscanf(val, "%d %d %d %d %d", &sCareer.regWins, &sCareer.regLosses, &sCareer.festLevel,
                                    &sCareer.festSeed, &sCareer.champion);
         else if (K("fest") || K("rpool") || K("cup")) {
@@ -1370,6 +1377,7 @@ void port_career_game_final(void) {
         build_team_roster(sCareer.team);
         career_log("Captain: %s (score %.2f). Attribute points earned: %d.", sTeamName[sCareer.team], total, pts);
         recap("Your captain: %s   +%d attribute point%s", sTeamName[sCareer.team], pts, pts == 1 ? "" : "s");
+        sCareer.pend[0] = SCENE_ID(SC_PICK, sCareer.team, 0);
         sCareer.stage = STAGE_CHAPTERS;
         sCareer.chapter = 0;
         sCareer.game = 0;
@@ -1395,6 +1403,8 @@ void port_career_game_final(void) {
             sCareer.recruitTier = recruit_tier_num(sCareer.chapterTwar);
             sCareer.recruitTeam = career_chapter_team(sCareer.chapter);
             sCareer.recruitPoolN = 0;
+            sCareer.pend[0] = SCENE_ID(SC_RESULT, sCareer.team,
+                                       career_chapter_team(sCareer.chapter) | (sCareer.chapterWins >= 2 ? 0x80 : 0));
             sCareer.chapter++;
             sCareer.game = 0;
             sCareer.chapterIwar = sCareer.chapterTwar = 0.0f;
@@ -1423,6 +1433,7 @@ void port_career_game_final(void) {
         sCareer.recruitLogo = sCareer.festIds[0];
         career_log("Star Festival (%s) %s: recruit up to tier %d from the invitees. Bowser's team is on its way.",
                    sFestName[lvl], g.won == 1 ? "won" : "lost", sCareer.recruitTier);
+        sCareer.pend[0] = SCENE_ID(SC_FEST_END, 0, g.won == 1);
         sCareer.stage = STAGE_BOWSER;
     } else if (sCareer.stage == STAGE_BOWSER) {
         // Win: Hammer Bro wants in. Lose: Dry Bones does. (Another of his kind if he's already yours.)
@@ -1443,6 +1454,8 @@ void port_career_game_final(void) {
                    g.won == 1 ? "won" : "lost",
                    sCareer.recruitPoolN ? ", recruit available: " : "",
                    sCareer.recruitPoolN ? sCharName[sCareer.recruitPool[0]] : "");
+        sCareer.pend[0] = SCENE_ID(SC_BOWSER_END, 0, g.won == 1);
+        sCareer.pend[1] = SCENE_ID(SC_JR, 0, g.won == 1);
         sCareer.stage = STAGE_CUP;
         cup_start();
     } else if (sCareer.stage == STAGE_CUP) {
@@ -1458,6 +1471,7 @@ void port_career_game_final(void) {
                 sCareer.cupRound = 2;
             } else {
                 sCareer.champion = 1;
+                sCareer.pend[0] = SCENE_ID(SC_CHAMP, sCareer.team, 0);
                 sCareer.stage = STAGE_EPILOGUE;
                 career_log("KINGDOM CUP CHAMPIONS! One more game: the All-Stars.");
                 recap("Kingdom Cup champions!");
@@ -1466,10 +1480,12 @@ void port_career_game_final(void) {
             career_log("Out of the Kingdom Cup in the %s. Your career ends here; the next Play Game starts a new one.",
                        sCupRound[sCareer.cupRound]);
             recap("Out in the Cup %s", sCupRound[sCareer.cupRound]);
+            sCareer.pend[0] = SCENE_ID(SC_OVER, cup_opponent(), sCareer.cupRound);
             sCareer.stage = STAGE_SEASON_DONE;
         }
     } else if (sCareer.stage == STAGE_EPILOGUE) {
         career_log("Epilogue vs the All-Stars: %s. Season complete.", g.won == 1 ? "won" : (g.won == 0 ? "lost" : "tied"));
+        sCareer.pend[0] = SCENE_ID(SC_EPILOGUE, 0, 0);
         sCareer.stage = STAGE_SEASON_DONE;
     }
     career_save();
@@ -1940,6 +1956,396 @@ static void card_init(void) {
         lbl_80371C30[sCardTask->start + i].obj->flags &= ~2;
     }
     sCardTask->callback = card_update;
+}
+
+// ---------------------------------------------------------------- cutscenes
+// Challenge mode's story dialogue, in its own art (bank 8, loaded while the Career menu is up):
+// the left talk window, its bubble, the A prompt, the face window and face (portrait swapped from
+// anim 0x54, as fn_2_36750 does), and the text anchor whose animation key places, sizes and colors
+// the text (an owner of the text system, as fn_2_27660 sets it up). Speakers without a Challenge
+// portrait show their lineup-screen face (bank 1, anim 0x83) in the face window.
+// The script is port/game/career_scenes.c. Scenes play from Play Game, then the game starts.
+extern void fn_8000FD9C(s32 index, s32 speed, s32 limit);
+
+enum { TK_WIN0, TK_WIN1, TK_BUBBLE, TK_PROMPT, TK_FACEBASE, TK_FACE, TK_TEXT, TK_ICON, TK_COUNT };
+static SpaniDesc sTalkDescs[TK_COUNT + 1] = {
+    {0, 0x52, 0.0f, 0.0f, -1, 0, 8, 0xFF, 8, {0, 0, 0}, 0.0f, 0, 1, 0},       // talk window
+    {0, 0x3F, 0.0f, 0.0f, -1, 0, 8, 0xFF, 8, {0, 0, 0}, 0.0f, 0, 1, 0},       // talk window
+    {0, 0x47, 0.0f, 0.0f, -1, 0, 7, 0xFF, 8, {0, 0, 0}, 0.0f, 0, 1, 0},       // bubble (pose 1)
+    {0, 0x4C, 0.0f, 0.0f, -1, 0, 7, 0xFF, 8, {0, 0, 0}, 0.0f, 0, 1, 0},       // A prompt
+    {0, 0xB, 0.0f, 0.0f, -1, 0, 7, 0xFF, 8, {0, 0, 0}, 0.0f, 0, 1, 0},        // face window
+    {0, 0xC, 0.0f, 0.0f, -1, 0, 7, TK_FACEBASE, 8, {0, 0, 0}, 0.0f, 0, 1, 0}, // face
+    {1, 0x43, 0.0f, 0.0f, -1, 0, 6, 0xFF, 8, {0, 0, 0}, 0.0f, 0, 1, 0},       // text anchor
+    {0, 0x83, 0.0f, 0.0f, -1, 0, 6, 0xFF, 1, {0, 0, 0}, 0.0f, 0, 1, 0},       // lineup face
+    {3, 0, 0.0f, 0.0f, 0, 0, 0, 0, 0, {0, 0, 0}, 0.0f, 0, 0, 0},
+};
+static LayoutGroup* sTalkTask;
+static s32 sTalkUp, sTalkKill;
+
+// Challenge portraits: bank 8 texture of each face (anim 0x54's frames point at these).
+#define WHO_LAKITU_TEX 22
+static const s16 kPortraitTex[][2] = {
+    {CHAR_ID_MARIO, 23}, {CHAR_ID_PEACH, 24}, {CHAR_ID_WARIO, 25}, {CHAR_ID_DK, 26}, {CHAR_ID_YOSHI, 27},
+    {CHAR_ID_BOWSER, 28}, {CHAR_ID_BOWSERJR, 29}, {CHAR_ID_BRO_HAMMER, 38}, {CHAR_ID_TOAD_YELLOW, 148},
+};
+
+static LayoutObj* talk_obj(s32 i) {
+    return sTalkTask != NULL ? lbl_80371C30[sTalkTask->start + i].obj : NULL;
+}
+
+static void talk_update(void) {
+    if (sTalkKill) {
+        fn_80034CEC(sTalkTask);
+        sTalkTask = NULL;
+        sTalkKill = 0;
+        sTalkUp = 0;
+        fn_800B0A14_removeQueue(NULL);
+    }
+}
+
+static void talk_init(void) {
+    s32 i;
+    sTalkTask = (LayoutGroup*)lbl_803CC1B8;
+    fn_80034E20(sTalkTask, sTalkDescs);
+    for (i = 0; i < TK_COUNT; i++) {
+        lbl_80371C30[sTalkTask->start + i].obj->flags &= ~2;
+        lbl_80371C30[sTalkTask->start + i].obj->_68 = 0;
+    }
+    sTalkTask->callback = talk_update;
+}
+
+// The frame of anim 0x54 that shows bank 8 texture `tex` (-1: none).
+static s32 portrait_frame(s32 tex) {
+    LayoutObj* o = talk_obj(TK_FACE);
+    s32 f;
+    if (o == NULL) return -1;
+    for (f = 0; f < 48; f++) {
+        u32 info[128];
+        memset(info, 0, sizeof(info));
+        if (fn_8000CEF0((Anim*)lbl_803C4BE0[o->_66].anim, 0x54, 0, (u32)f, info) &&
+            *(u16*)((u8*)info + 6) == (u16)tex) {
+            return f;
+        }
+    }
+    return -1;
+}
+
+// --- the cutscene queue and player
+enum { CUT_AFTER_GAME = 1, CUT_AFTER_ARCHIVE };
+static u32 sCutQueue[6];
+static s32 sCutQN, sCutQI;
+static s32 sCutAfter;
+static s32 sCut;        // 0 off; 1 waiting for the window; 2 opening; 3 typing; 4 waiting for A; 5 closing; 6 done
+static const SceneLine* sCutLines;
+static s32 sCutLine;
+static s32 sCutEntry = -1;
+static s32 sCutOwner = -1;
+static s32 sCutOppChar = -1;
+static char sCutOppName[24];
+static s32 sCutRound;
+static u16 sCutBuf[256];
+static s32 sCutWait;
+static void sfx(s32 kind);
+
+static s32 voice_char(void) {
+    if (sCareer.team == TEAM_YOSHI) return CHAR_ID_BIRDO;
+    if (sCareer.team == TEAM_DK) return CHAR_ID_DIDDY;
+    return sCareer.team >= 0 ? sTeamCaptain[sCareer.team] : CHAR_ID_MARIO;
+}
+
+// "{NAME}" etc. filled in, wrapped to the talk window (about 28 characters a line).
+static void cut_text(const char* src, char* out, size_t cap) {
+    char tmp[320];
+    size_t n = 0;
+    const char* p = src;
+    s32 col = 0;
+    s32 lastSpace = -1;
+    size_t i;
+    while (*p != '\0' && n + 1 < sizeof(tmp)) {
+        if (*p == '{') {
+            char v[48] = "";
+            const char* e = strchr(p, '}');
+            if (e == NULL) break;
+            if (strncmp(p, "{NAME}", 6) == 0) snprintf(v, sizeof(v), "%s", sCareer.name);
+            else if (strncmp(p, "{BODY}", 6) == 0) snprintf(v, sizeof(v), "%s", sFamilies[family_of(sCareer.body, NULL)].name);
+            else if (strncmp(p, "{CAPTAIN}", 9) == 0) snprintf(v, sizeof(v), "%s", sCareer.team >= 0 ? sTeamName[sCareer.team] : "");
+            else if (strncmp(p, "{OPP}", 5) == 0) snprintf(v, sizeof(v), "%s", sCutOppName);
+            else if (strncmp(p, "{SEED}", 6) == 0) snprintf(v, sizeof(v), "%d", sCareer.team >= 0 ? sCareer.cupSeed[sCareer.team] : 0);
+            else if (strncmp(p, "{ROUND}", 7) == 0) snprintf(v, sizeof(v), "%s", sCupRound[sCutRound % 3]);
+            for (i = 0; v[i] != '\0' && n + 1 < sizeof(tmp); i++) tmp[n++] = v[i];
+            p = e + 1;
+            continue;
+        }
+        tmp[n++] = *p++;
+    }
+    tmp[n] = '\0';
+    // Word wrap.
+    for (i = 0; i < n; i++) {
+        if (tmp[i] == ' ') lastSpace = (s32)i;
+        if (++col > 28 && lastSpace >= 0) {
+            tmp[lastSpace] = '\n';
+            col = (s32)i - lastSpace;
+            lastSpace = -1;
+        }
+    }
+    snprintf(out, cap, "%s", tmp);
+}
+
+// The scenes waiting before the next game (only once per game).
+static s32 pre_key(void) {
+    return sCareer.stage * 1000 + sCareer.chapter * 100 + sCareer.game * 10 + sCareer.cupRound + 1;
+}
+static void queue_pre(void) {
+    if (sCareer.preSeen == pre_key()) return;
+    switch (sCareer.stage) {
+    case STAGE_PROLOGUE: sCutQueue[sCutQN++] = SCENE_ID(SC_TRYOUT, 0, 0); break;
+    case STAGE_CHAPTERS:
+        if (sCareer.game == 0) sCutQueue[sCutQN++] = SCENE_ID(SC_ARRIVE, sCareer.team, career_chapter_team(sCareer.chapter));
+        break;
+    case STAGE_FESTIVAL: sCutQueue[sCutQN++] = SCENE_ID(SC_FEST, 0, 0); break;
+    case STAGE_BOWSER: sCutQueue[sCutQN++] = SCENE_ID(SC_BOWSER, 0, 0); break;
+    case STAGE_CUP:
+        if (sCareer.cupRound == 0 || (sCareer.cupRound == 1 && sCareer.cupBye == sCareer.team)) {
+            sCutQueue[sCutQN++] = SCENE_ID(SC_SEED, 0, 0);
+        }
+        sCutQueue[sCutQN++] = sCareer.cupRound >= 2 ? SCENE_ID(SC_FINAL, 0, 0) : SCENE_ID(SC_ROUND, 0, sCareer.cupRound);
+        break;
+    }
+}
+
+static void cut_close_text(void) {
+    if (sCutOwner >= 0) {
+        lbl_80366B18.owners[sCutOwner].object = NULL;
+        sCutOwner = -1;
+    }
+    if (sCutEntry >= 0) {
+        lbl_80366B18.entries[sCutEntry].state = 0;
+        sCutEntry = -1;
+    }
+}
+
+// Speaker of the current line: face (portrait, lineup face or none) and text.
+static void cut_show_line(void) {
+    const SceneLine* l = &sCutLines[sCutLine];
+    LayoutObj* face = talk_obj(TK_FACE);
+    LayoutObj* base = talk_obj(TK_FACEBASE);
+    LayoutObj* icon = talk_obj(TK_ICON);
+    s32 who = l->who;
+    s32 tex = -1;
+    s32 k;
+    char txt[320];
+    TextEntry* e;
+    if (who == W_VOICE) who = voice_char();
+    else if (who == W_CAPTAIN) who = sCareer.team >= 0 ? sTeamCaptain[sCareer.team] : CHAR_ID_MARIO;
+    else if (who == W_OPP) who = sCutOppChar;
+    if (l->who == W_LAKITU) tex = WHO_LAKITU_TEX;
+    for (k = 0; k < (s32)(sizeof(kPortraitTex) / sizeof(kPortraitTex[0])); k++) {
+        if (kPortraitTex[k][0] == who) tex = kPortraitTex[k][1];
+    }
+    if (face != NULL && base != NULL && icon != NULL) {
+        s32 f = tex >= 0 ? portrait_frame(tex) : -1;
+        face->flags &= ~2;
+        icon->flags &= ~2;
+        if (who == W_NARR || (who < 0 && f < 0)) {
+            base->flags &= ~2;
+        } else {
+            base->flags |= 2;
+            if (f >= 0) {
+                fn_800363D8((SpaniOwner*)sTalkTask, TK_FACE, 1, 0x54, (u32)f);
+                face->_5C = 0;
+                face->_68 = 1; // its pop-in, to frame 0x15
+                face->flags |= 2;
+            } else if (who >= 0 && who < 54) {
+                s32 bx, by, ix, iy;
+                sprite_key(base, &bx, &by);
+                icon->_5C = (u32)who << 16;
+                icon->_68 = 0;
+                sprite_key(icon, &ix, &iy);
+                icon->x = (f32)(bx + 10 - ix);
+                icon->y = (f32)(by + 10 - iy);
+                icon->flags |= 2;
+            }
+        }
+        if (l->who != W_NARR && tex >= 0 && f < 0) {
+            career_log("cutscene: no anim 0x54 frame shows bank 8 texture %d (speaker %d)", tex, who);
+        }
+    }
+    cut_text(l->text, txt, sizeof(txt));
+    encode(sCutBuf, (s32)(sizeof(sCutBuf) / sizeof(sCutBuf[0])), txt);
+    if (sCutEntry >= 0) {
+        e = &lbl_80366B18.entries[sCutEntry];
+        e->text = sCutBuf;
+        e->finished = 0;
+        fn_8000FD9C(sCutEntry, 1, 0); // typewriter from the first letter
+    }
+}
+
+// Starts the next queued scene; FALSE when none is left.
+static BOOL cut_next_scene(void) {
+    while (sCutQI < sCutQN) {
+        u32 id = sCutQueue[sCutQI++];
+        u32 kind = id >> 16;
+        u32 a = (id >> 8) & 0xFF;
+        u32 b = id & 0xFF;
+        sCutLines = career_scene_lines(id);
+        if (sCutLines == NULL || sCutLines[0].who == W_END) continue;
+        sCutOppChar = -1;
+        sCutOppName[0] = '\0';
+        if (kind == SC_ARRIVE || kind == SC_RESULT) {
+            s32 t = (s32)(b & 0x7F);
+            if (t < TEAM_COUNT) {
+                sCutOppChar = sTeamCaptain[t];
+                snprintf(sCutOppName, sizeof(sCutOppName), "%s", sTeamName[t]);
+            }
+        } else if (kind == SC_FEST_END) {
+            sCutOppChar = sCareer.festIds[0];
+        } else if (kind == SC_ROUND) {
+            s32 t = cup_opponent();
+            sCutOppChar = t == TEAM_BOWSER ? CHAR_ID_BOWSERJR : sTeamCaptain[t];
+            snprintf(sCutOppName, sizeof(sCutOppName), "%s", sTeamName[t]);
+        } else if (kind == SC_OVER) {
+            sCutOppChar = a == TEAM_BOWSER ? CHAR_ID_BOWSERJR : (a < TEAM_COUNT ? sTeamCaptain[a] : -1);
+            sCutRound = (s32)b;
+        }
+        sCutLine = 0;
+        career_log("cutscene %u:%u:%u", kind, a, b);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void begin_leave(s32 what);
+static void go_page(s32 page, s32 row);
+
+// Play Game: the waiting scenes first (the last game's, then this game's intro), then `after`.
+static void cut_play_then(s32 after) {
+    s32 i;
+    sCutQN = sCutQI = 0;
+    for (i = 0; i < 3; i++) {
+        if (sCareer.pend[i] != 0) sCutQueue[sCutQN++] = sCareer.pend[i];
+    }
+    if (after == CUT_AFTER_GAME) queue_pre();
+    sCutAfter = after;
+    if (sCutQN == 0 || sTalkBank != 2 || !cut_next_scene()) {
+        sCut = 6; // nothing to show (or the story art isn't loaded): straight on
+        return;
+    }
+    ui_clear();
+    sCardShow = 0;
+    sCut = 1;
+    if (!sTalkUp) {
+        sTalkUp = 1;
+        sTalkKill = 0;
+        fn_800B0A5C_insertQueue((void*)talk_init, 0x1000);
+    }
+}
+
+// The scenes are over: mark them seen, then go on.
+static void cut_finish(void) {
+    s32 i;
+    for (i = 0; i < 3; i++) sCareer.pend[i] = 0;
+    if (sCutAfter == CUT_AFTER_GAME) sCareer.preSeen = pre_key();
+    career_save();
+    sCut = 0;
+    sCardShow = 1;
+    if (sCutAfter == CUT_AFTER_GAME) {
+        begin_leave(LEAVE_GAME);
+    } else if (sCutAfter == CUT_AFTER_ARCHIVE) {
+        career_archive(); // a new career: create your player
+        go_page(PAGE_CREATE, 0);
+    }
+}
+
+// Called every frame while a cutscene runs. pr: buttons pressed this frame.
+static void cut_step(u16 pr) {
+    LayoutObj* w0 = talk_obj(TK_WIN0);
+    LayoutObj* w1 = talk_obj(TK_WIN1);
+    LayoutObj* bub = talk_obj(TK_BUBBLE);
+    LayoutObj* prm = talk_obj(TK_PROMPT);
+    LayoutObj* face = talk_obj(TK_FACE);
+    LayoutObj* base = talk_obj(TK_FACEBASE);
+    LayoutObj* anc = talk_obj(TK_TEXT);
+    s32 i;
+    switch (sCut) {
+    case 1: // the window task builds on its first frame
+        if (w0 == NULL || anc == NULL) return;
+        // The text: an entry owned by the anchor (the text system places it from the anchor's key).
+        for (i = 0; i < 30 && lbl_80366B18.entries[i].state != 0; i++) {}
+        for (sCutOwner = 0; sCutOwner < 30 && lbl_80366B18.owners[sCutOwner].object != NULL; sCutOwner++) {}
+        if (i >= 30 || sCutOwner >= 30) {
+            sCutOwner = -1;
+            sCut = 6;
+            return;
+        }
+        sCutEntry = i;
+        memset(&lbl_80366B18.entries[i], 0, sizeof(TextEntry));
+        lbl_80366B18.entries[i].text = sCutBuf;
+        lbl_80366B18.entries[i].layer = anc->layer;
+        lbl_80366B18.entries[i].charLimit = 0;
+        lbl_80366B18.entries[i].state = 1;
+        sCutBuf[0] = 0x4000;
+        lbl_80366B18.owners[sCutOwner].object = anc;
+        lbl_80366B18.owners[sCutOwner].entry = (u16)i;
+        lbl_80366B18.owners[sCutOwner]._06 = 0;
+        anc->flags |= 4 | 2;
+        // Open: windows, bubble and face window play in (fn_2_370F8 / fn_2_36D04 / fn_2_3697C).
+        w0->flags |= 2; w0->_5C = 0; w0->_68 = 1;
+        w1->flags |= 2; w1->_5C = 0; w1->_68 = 1;
+        bub->flags |= 2; bub->_5C = 0xF0000; bub->_68 = 1;
+        base->_5C = 0; base->_68 = 1;
+        cut_show_line();
+        sCut = 3;
+        return;
+    case 3: // typing
+        if ((bub->_5C >> 16) >= 0x19) bub->_68 = 0;
+        if ((face->_5C >> 16) >= 0x15) face->_68 = 0;
+        if (pr & 0x1200) { sCut = 5; break; } // B / Start: skip the scene
+        if (sCutEntry >= 0 && (lbl_80366B18.entries[sCutEntry].finished || (pr & 0x100))) {
+            fn_8000FD9C(sCutEntry, 0, 0); // whole line shown
+            prm->flags |= 2; prm->_68 = 1;
+            sCut = 4;
+        }
+        return;
+    case 4: // waiting for A
+        if ((face->_5C >> 16) >= 0x15) face->_68 = 0;
+        if (pr & 0x1200) { sCut = 5; break; }
+        if (pr & 0x100) {
+            prm->flags &= ~2;
+            sfx(0);
+            if (sCutLines[sCutLine + 1].who != W_END) {
+                sCutLine++;
+                cut_show_line();
+                sCut = 3;
+            } else if (cut_next_scene()) {
+                cut_show_line();
+                sCut = 3;
+            } else {
+                sCut = 5;
+            }
+        }
+        return;
+    }
+    if (sCut == 5) { // close: play out, then free the window
+        cut_close_text();
+        prm->flags &= ~2;
+        face->flags &= ~2;
+        talk_obj(TK_ICON)->flags &= ~2;
+        w0->_68 = 4; w1->_68 = 4; base->_68 = 4;
+        bub->_5C = 0x19 << 16; bub->_68 = 1;
+        sCutWait = 0;
+        sCut = 7;
+        return;
+    }
+    if (sCut == 7) {
+        if (((w0->_5C >> 16) != 0 || (bub->_5C >> 16) < 0x1D) && ++sCutWait < 90) return;
+        sTalkKill = sTalkUp;
+        sCut = 8;
+        return;
+    }
+    if (sCut == 8) {
+        if (sTalkUp) return;
+        cut_finish();
+    }
 }
 
 static s32 page_rows(s32 page) {
@@ -2717,12 +3123,11 @@ static void input_hub(u16 pr, u16 rp) {
         switch (sRow) {
         case HUB_NEXT:
             if (sCareer.stage == STAGE_SEASON_DONE) {
-                career_archive(); // a new career: create your player
-                go_page(PAGE_CREATE, 0);
+                cut_play_then(CUT_AFTER_ARCHIVE); // the season's last scene, then a new career
             } else if (sCareer.stage == STAGE_FESTIVAL) {
                 go_page(PAGE_FESTIVAL, FE_TALENT);
             } else {
-                begin_leave(LEAVE_GAME);
+                cut_play_then(CUT_AFTER_GAME);
             }
             break;
         case HUB_ATTR: go_page(PAGE_ATTR, 0); break;
@@ -2815,7 +3220,7 @@ static void input_festival(u16 pr, u16 rp) {
     } else if ((pr & 0x100) && sRow == FE_PLAY) {
         career_save();
         sfx(1);
-        begin_leave(LEAVE_GAME);
+        cut_play_then(CUT_AFTER_GAME);
     } else if (pr & 0x200) {
         sfx(2);
         go_page(PAGE_HUB, HUB_NEXT);
@@ -2909,6 +3314,12 @@ void port_career_scene(void) {
     }
     if (!port_career_layout_up()) {
         return; // the layout builds on its first frame
+    }
+    if (sCut) {
+        s32 cp = lbl_8034E9A0.ports[0] < 4 ? lbl_8034E9A0.ports[0] : 0;
+        if (sCut == 6) cut_finish();
+        else cut_step(lbl_8034E9A0.input[cp].pressed);
+        return;
     }
     if (sDirty) {
         draw_page();
