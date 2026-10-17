@@ -2645,7 +2645,9 @@ void port_career_layout_page(s32 rows, s32 row) {
     s32 prev = lbl_2_bss_F410._00;
     sPortCareerRows = rows;
     if (row != prev) {
-        lbl_2_bss_F410._04 = prev;
+        // From a row the new page doesn't have (Create's Complete is row 6; the hub has 4 rows),
+        // the move would start on a hidden plate, which never animates: start from the target.
+        lbl_2_bss_F410._04 = prev < rows ? prev : row;
         lbl_2_bss_F410._00 = row;
         lbl_803C66B0.steps[1][1] = 0;
         fn_800625A4(0, 0x56);
@@ -2675,6 +2677,13 @@ s32 port_career_layout_up(void) {
 // The layout's busy flag: input waits while the highlight animates.
 s32 port_career_layout_busy(void) {
     return lbl_803C66B0.active[0] != 0;
+}
+
+// The busy flag stuck (an animation step that never reports done): clear it. Returns the step.
+s32 port_career_layout_unstick(void) {
+    s32 step = lbl_803C66B0.step[0];
+    lbl_803C66B0.active[0] = 0;
+    return step;
 }
 
 // Sprite `slot` of the layout (0x18 + row: a row's label, 0x20: the description), or NULL.

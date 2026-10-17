@@ -1844,6 +1844,8 @@ static s32 sProsp[9], sProspN, sProspAt;
 static s32 sRepl[8], sReplN, sReplAt;
 
 static s32 sNoFadeWait;
+static s32 sBusyFrames; // frames the menu layout has reported busy
+extern s32 port_career_layout_unstick(void);
 static s32 sTalkBank; // bank 8 (story dialogue art): 0 not loaded, 1 loading, 2 loaded
 extern u8 lbl_2_data_1323C[]; // its disc entry (menus: rep_08E8.c)
 extern s32 fn_80035838(void* entry, u8 id);
@@ -3325,8 +3327,16 @@ void port_career_scene(void) {
         draw_page();
     }
     if (port_career_layout_busy()) {
-        return; // the highlight is moving
+        // The highlight is moving. A move takes a few frames; a flag still set after 1.5 s is stuck
+        // (the menu would ignore every button), so clear it.
+        if (++sBusyFrames > 90) {
+            career_log("menu busy for %d frames (page %d row %d, step 0x%x): cleared", sBusyFrames, sPage, sRow,
+                       port_career_layout_unstick());
+            sBusyFrames = 0;
+        }
+        return;
     }
+    sBusyFrames = 0;
     port = lbl_8034E9A0.ports[0] < 4 ? lbl_8034E9A0.ports[0] : 0;
     pr = lbl_8034E9A0.input[port].pressed;
     rp = lbl_8034E9A0.input[port].repeat | pr;
