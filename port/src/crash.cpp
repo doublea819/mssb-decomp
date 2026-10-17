@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 // Crash and hang handling.
 //
 // A crash (bad access, abort, failed assertion, ...) writes a backtrace to
@@ -132,7 +135,7 @@ void watchdog(int timeoutSecs)
         int64_t last = s_lastFrameMs.load();
         if (last != 0 && now_ms() - last > timeoutMs)
         {
-#ifdef __APPLE__
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
             // MSSB_HANG_SAMPLE=<file>: every thread's stack (macOS `sample`).
             if (const char* out = getenv("MSSB_HANG_SAMPLE"))
             {
@@ -172,7 +175,12 @@ void port_crash_init(const char* userPath)
     for (int sig : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP, kWatchdogSignal})
         sigaction(sig, &sa, nullptr);
 
+#if TARGET_OS_IPHONE
+    // iOS freezes the app in the background: a frame gap there isn't a hang.
+    int timeoutSecs = 0;
+#else
     int timeoutSecs = 30;
+#endif
     if (const char* env = getenv("MSSB_WATCHDOG_SECS"))
         timeoutSecs = atoi(env);
     if (timeoutSecs > 0)

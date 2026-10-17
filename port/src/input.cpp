@@ -141,8 +141,10 @@ extern "C" u32 port_pad_script_frame(void)
 
 // MSSB_INPUT presses (online play applies them to the local pad instead, in
 // port/web/src/net_web.cpp).
+extern "C" void port_touch_apply(PADStatus* status);
 extern "C" void port_pad_script(PADStatus* status)
 {
+    port_touch_apply(status); // on-screen touch controls (port/src/touch.cpp)
     u32 frame = ++s_scriptFrame;
     // MSSB_DEBUG_INPUT: port 1 as the game reads it, whenever it changes.
     static const bool s_debugPad = getenv("MSSB_DEBUG_INPUT") != nullptr;

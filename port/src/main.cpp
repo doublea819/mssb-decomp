@@ -28,6 +28,8 @@ extern "C" bool port_web_open_disc(void);
 extern "C" void port_web_report_fatal(const char* message);
 #endif
 
+extern "C" void port_touch_init(void);
+
 static void log_callback(AuroraLogLevel level, const char* module, const char* message, unsigned int len)
 {
     static const char* names[] = {"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"};
@@ -136,6 +138,7 @@ int aurora_main(int argc, char** argv)
 #endif
     AuroraInfo info = aurora_initialize(argc, argv, &config);
     port_crash_init(info.userPath);
+    port_touch_init();
     port_user_ini_load(info.userPath);
 
 #ifdef __EMSCRIPTEN__

@@ -47,6 +47,9 @@ extern "C" int port_is_main_os_thread(void);
 WebFrameStats g_webStats; // ?stats (port_web_frame_tick prints and resets it)
 #endif
 
+extern "C" void port_touch_event(const SDL_Event* e);
+extern "C" void port_touch_draw(SDL_Window* win);
+
 namespace {
 std::atomic<u32> s_retraceCount{0};
 VIRetraceCallback s_preCb = nullptr;
@@ -118,6 +121,8 @@ void handle_events()
     {
         if (event->type == AURORA_EXIT)
             s_quitRequested = true;
+        else if (event->type == AURORA_SDL_EVENT)
+            port_touch_event(&event->sdl);
         ++event;
     }
 }
@@ -384,9 +389,11 @@ void port_present_frame(void)
         const auto t0 = std::chrono::steady_clock::now();
 #ifdef __EMSCRIPTEN__
         double w0 = emscripten_get_now();
+        port_touch_draw(aurora_get_window());
         aurora_end_frame();
         g_webStats.endFrameMs += emscripten_get_now() - w0;
 #else
+        port_touch_draw(aurora_get_window());
         aurora_end_frame();
 #endif
         s_stats.maxEndMs = std::max(s_stats.maxEndMs, ms_since(t0));

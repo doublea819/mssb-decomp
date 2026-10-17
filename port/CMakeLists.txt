@@ -7,7 +7,7 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
 endif ()
 
-if (APPLE AND NOT CMAKE_OSX_SYSROOT)
+if (APPLE AND NOT CMAKE_OSX_SYSROOT AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     execute_process(COMMAND xcrun --sdk macosx --show-sdk-path
             OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
             OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -289,6 +289,42 @@ if (MSSB_AURORA)
     endif ()
     target_link_libraries(mssb PRIVATE musyx mssb_audio aurora::core aurora::gx aurora::vi aurora::pad
         aurora::si aurora::dvd aurora::card aurora::mtx aurora::os aurora::main)
+endif ()
+
+if (IOS)
+    # iPhone app (port/tools/make_ios.sh): an Xcode project with the disc image and
+    # the pipeline cache in the bundle, signed with your team (automatic signing).
+    set(MSSB_IOS_TEAM "" CACHE STRING "Apple developer team ID (signing)")
+    set(MSSB_IOS_BUNDLE_ID "com.doublea819.mssb" CACHE STRING "iOS bundle identifier")
+    set(MSSB_IOS_DISC "${MSSB_ROOT}/../Mario Superstar Baseball (USA).iso" CACHE FILEPATH
+        "Disc image copied into the app")
+    set(MSSB_IOS_RESOURCES ${CMAKE_SOURCE_DIR}/ios/Assets.xcassets)
+    if (EXISTS "${MSSB_IOS_DISC}")
+        list(APPEND MSSB_IOS_RESOURCES "${MSSB_IOS_DISC}")
+    else ()
+        message(WARNING "MSSB_IOS_DISC not found (${MSSB_IOS_DISC}): the app will have no disc")
+    endif ()
+    if (EXISTS "${MSSB_ROOT}/build/port/initial_pipeline_cache.db")
+        list(APPEND MSSB_IOS_RESOURCES "${MSSB_ROOT}/build/port/initial_pipeline_cache.db")
+    endif ()
+    target_sources(mssb PRIVATE ${MSSB_IOS_RESOURCES})
+    set_target_properties(mssb PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/ios/Info.plist.in
+        MACOSX_BUNDLE_GUI_IDENTIFIER ${MSSB_IOS_BUNDLE_ID}
+        MACOSX_BUNDLE_BUNDLE_VERSION 1
+        RESOURCE "${MSSB_IOS_RESOURCES}"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${MSSB_IOS_BUNDLE_ID}
+        XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${MSSB_IOS_TEAM}"
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
+        XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS ${CMAKE_SOURCE_DIR}/ios/mssb.entitlements
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1"
+        XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET 17.0
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
+        XCODE_ATTRIBUTE_ENABLE_BITCODE NO
+        XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT dwarf
+        XCODE_GENERATE_SCHEME TRUE)
 endif ()
 
 if (EMSCRIPTEN)
