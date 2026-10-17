@@ -54,6 +54,13 @@ if (EMSCRIPTEN)
     target_include_directories(nod_web PUBLIC ${CMAKE_SOURCE_DIR}/web/nod/include)
     add_library(nod::nod ALIAS nod_web)
 endif ()
+if (IOS)
+    # nod is a Rust library with no iOS package: use the web build's minimal reader
+    # for plain .iso/.gcm images instead (aurora reads the disc through a stream).
+    add_library(nod_ios STATIC ${CMAKE_SOURCE_DIR}/web/nod/nod_gcm.cpp)
+    target_include_directories(nod_ios PUBLIC ${CMAKE_SOURCE_DIR}/web/nod/include)
+    add_library(nod::nod ALIAS nod_ios)
+endif ()
 if (MSSB_AURORA)
     set(AURORA_ENABLE_DVD ON CACHE BOOL "" FORCE)
     set(AURORA_ENABLE_CARD ON CACHE BOOL "" FORCE)
