@@ -108,6 +108,22 @@ void init_region()
     void* p = mmap(nullptr, kReserveSize * 2, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
     if (p == MAP_FAILED)
     {
+        // A smaller address space (Apple TV has no extended-virtual-addressing entitlement):
+        // ask for exactly 4 GB at 4 GB-aligned addresses until one is free.
+        for (uintptr_t hint = 2 * kReserveSize; hint <= 64 * kReserveSize; hint += kReserveSize)
+        {
+            void* q = mmap((void*)hint, kReserveSize, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+            if (q == MAP_FAILED)
+                continue;
+            if ((uintptr_t)q == hint)
+            {
+                s_base = hint;
+                s_top = s_base + kGuardSize;
+                s_committed = s_top;
+                return;
+            }
+            munmap(q, kReserveSize);
+        }
         fprintf(stderr, "FATAL: couldn't reserve the game heap\n");
         abort();
     }

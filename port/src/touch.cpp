@@ -144,7 +144,7 @@ extern "C" {
 void port_touch_init(void)
 {
     const char* env = getenv("MSSB_TOUCH");
-#if defined(SDL_PLATFORM_IOS)
+#if defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_TVOS) // iPhone (not Apple TV: controllers only)
     s_enabled = env == nullptr || env[0] != '0';
 #else
     s_enabled = env != nullptr && env[0] == '1';

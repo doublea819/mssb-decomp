@@ -7,7 +7,7 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
 endif ()
 
-if (APPLE AND NOT CMAKE_OSX_SYSROOT AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (APPLE AND NOT CMAKE_OSX_SYSROOT AND NOT CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS)$")
     execute_process(COMMAND xcrun --sdk macosx --show-sdk-path
             OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
             OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -54,7 +54,16 @@ if (EMSCRIPTEN)
     target_include_directories(nod_web PUBLIC ${CMAKE_SOURCE_DIR}/web/nod/include)
     add_library(nod::nod ALIAS nod_web)
 endif ()
-if (IOS)
+# Apple TV (port/tools/make_tvos.sh) shares the iPhone's build setup; CMake sets IOS only for iOS.
+set(MSSB_TVOS OFF)
+if (CMAKE_SYSTEM_NAME STREQUAL "tvOS")
+    set(MSSB_TVOS ON)
+endif ()
+set(MSSB_MOBILE OFF)
+if (IOS OR MSSB_TVOS)
+    set(MSSB_MOBILE ON)
+endif ()
+if (MSSB_MOBILE)
     # nod is a Rust library with no iOS package: use the web build's minimal reader
     # for plain .iso/.gcm images instead (aurora reads the disc through a stream).
     add_library(nod_ios STATIC ${CMAKE_SOURCE_DIR}/web/nod/nod_gcm.cpp)
@@ -172,7 +181,7 @@ list(APPEND MSSB_GAME_SOURCES ${MSSB_PORT_GAME_SOURCES})
 mssb_bracket_modules(MSSB_GAME_SOURCES src)
 # Xcode (iOS) can't take object libraries with repeated file names (src/*/rep_00B0.c):
 # its object files get hashed names. There they're static libraries, linked whole.
-if (IOS)
+if (MSSB_MOBILE)
     set(MSSB_OBJLIB STATIC)
 else ()
     set(MSSB_OBJLIB OBJECT)
@@ -292,7 +301,7 @@ if (EMSCRIPTEN)
     file(GLOB WEB_SOURCES CONFIGURE_DEPENDS web/src/*.cpp)
     list(APPEND PORT_SOURCES ${WEB_SOURCES})
 endif ()
-if (IOS)
+if (MSSB_MOBILE)
     add_executable(mssb ${PORT_SOURCES})
     add_dependencies(mssb mssb_game mssb_gen)
     target_link_options(mssb PRIVATE "LINKER:-force_load,$<TARGET_FILE:mssb_game>"
@@ -344,6 +353,40 @@ if (IOS)
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET 17.0
         XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
         XCODE_ATTRIBUTE_ENABLE_BITCODE NO
+        XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT dwarf
+        XCODE_GENERATE_SCHEME TRUE)
+elseif (MSSB_TVOS)
+    # Apple TV app: same disc and cache in the bundle; controllers only; saves mirrored into
+    # NSUserDefaults (port/src/tvos_store.mm). Dawn is the iOS package retagged (make_tvos.sh).
+    set(MSSB_IOS_TEAM "" CACHE STRING "Apple developer team ID (signing)")
+    set(MSSB_TVOS_BUNDLE_ID "com.doublea819.mssb.tv" CACHE STRING "tvOS bundle identifier")
+    set(MSSB_IOS_DISC "${MSSB_ROOT}/../Mario Superstar Baseball (USA).iso" CACHE FILEPATH
+        "Disc image copied into the app")
+    set(MSSB_TVOS_RESOURCES ${CMAKE_SOURCE_DIR}/tvos/Assets.xcassets)
+    if (EXISTS "${MSSB_IOS_DISC}")
+        list(APPEND MSSB_TVOS_RESOURCES "${MSSB_IOS_DISC}")
+    else ()
+        message(WARNING "MSSB_IOS_DISC not found (${MSSB_IOS_DISC}): the app will have no disc")
+    endif ()
+    if (EXISTS "${MSSB_ROOT}/build/port/initial_pipeline_cache.db")
+        list(APPEND MSSB_TVOS_RESOURCES "${MSSB_ROOT}/build/port/initial_pipeline_cache.db")
+    endif ()
+    target_sources(mssb PRIVATE ${MSSB_TVOS_RESOURCES} ${CMAKE_SOURCE_DIR}/src/tvos_store.mm)
+    target_compile_definitions(mssb PRIVATE MSSB_TVOS=1)
+    target_compile_definitions(mssb_game PRIVATE MSSB_TVOS=1)
+    set_target_properties(mssb PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/tvos/Info.plist.in
+        MACOSX_BUNDLE_GUI_IDENTIFIER ${MSSB_TVOS_BUNDLE_ID}
+        MACOSX_BUNDLE_BUNDLE_VERSION 1
+        RESOURCE "${MSSB_TVOS_RESOURCES}"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${MSSB_TVOS_BUNDLE_ID}
+        XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${MSSB_IOS_TEAM}"
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "3"
+        XCODE_ATTRIBUTE_TVOS_DEPLOYMENT_TARGET 17.0
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "App Icon & Top Shelf Image"
         XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT dwarf
         XCODE_GENERATE_SCHEME TRUE)
 endif ()

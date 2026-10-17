@@ -189,6 +189,10 @@ static void career_new(void) {
     snprintf(sCareer.name, sizeof(sCareer.name), "ROOKIE");
 }
 
+#ifdef MSSB_TVOS
+void port_store_backup(const char* path, const char* key);
+int port_store_restore(const char* path, const char* key);
+#endif
 static void career_save(void) {
     char path[1024];
     FILE* f;
@@ -245,6 +249,9 @@ static void career_save(void) {
         fprintf(f, "\n");
     }
     fclose(f);
+#ifdef MSSB_TVOS
+    port_store_backup(path, "career.sav"); // tvOS may clear the file (port/src/tvos_store.mm)
+#endif
 }
 
 static void career_load(void) {
@@ -262,6 +269,9 @@ static void career_load(void) {
         return;
     }
     career_path(path, sizeof(path), "career.sav");
+#ifdef MSSB_TVOS
+    port_store_restore(path, "career.sav");
+#endif
     f = fopen(path, "r");
     if (f == NULL) {
         return;
