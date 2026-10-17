@@ -213,6 +213,7 @@ extern u32 fn_3_90064(s32 id);
 extern void fn_3_5A6D4(s32);
 #ifdef TARGET_PC
 extern s32 port_career_training_active(void);
+extern u8 lbl_800FE93C[9][5]; // character families: base id, then its colors
 #endif
 extern void fn_3_5E60(void);
 extern void fn_3_B95EC(void);
@@ -2866,19 +2867,41 @@ void fn_3_10E60C(void) {
             g_Minigame._1A13[i] = 1;
         }
         if (g_Minigame._190A != 0) {
+#ifdef TARGET_PC
+            // Career training: the grid holds one slot per character family (L changes the color,
+            // lbl_800FE93C), so your player is its family's slot with its color picked.
+            s32 base = g_d_GameSettings._36, alt = -1, c;
+            if (port_career_training_active()) {
+                for (j = 0; j < 9 && alt < 0; j++) {
+                    for (c = 0; c < 5; c++) {
+                        if (lbl_800FE93C[j][c] == g_d_GameSettings._36) {
+                            base = lbl_800FE93C[j][0];
+                            alt = j * 8 + c;
+                            break;
+                        }
+                    }
+                }
+            }
+#endif
             fn_80050FE8(1, 1, 1, 1, 1, 0);
             for (i = 0; i < 0x36; i++) {
 #ifdef TARGET_PC
                 // Career training: only your player is offered (and picked for you, below).
-                if (port_career_training_active() ? i != g_d_GameSettings._36
-                                                  : (s32)starMissionCompletionTracker[i]._31 != 1) {
+                if (port_career_training_active() ? i != base : (s32)starMissionCompletionTracker[i]._31 != 1) {
 #else
                 if ((s32)starMissionCompletionTracker[i]._31 != 1) {
 #endif
                     fn_8004FDA0(i);
                 }
             }
+#ifdef TARGET_PC
+            g_Minigame._19E8[lbl_3_common_bss_37400.humanPlayer]._0 = port_career_training_active() ? base : g_d_GameSettings._36;
+            if (alt >= 0) {
+                lbl_803C6028._83[alt / 8] = (u8)(alt % 8); // the color
+            }
+#else
             g_Minigame._19E8[lbl_3_common_bss_37400.humanPlayer]._0 = g_d_GameSettings._36;
+#endif
         } else {
             fn_80050FE8(1, 1, 1, 1, 1, 1);
             for (i = 0; i < 4; i++) {
