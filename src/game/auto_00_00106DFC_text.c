@@ -211,6 +211,9 @@ extern void* _OSAllocFromHeap(s32, s32);
 extern void* ARAMTransfer(void* instr, void* dest, u8 mode, u32 aramAddr);
 extern u32 fn_3_90064(s32 id);
 extern void fn_3_5A6D4(s32);
+#ifdef TARGET_PC
+extern s32 port_career_training_active(void);
+#endif
 extern void fn_3_5E60(void);
 extern void fn_3_B95EC(void);
 extern void fn_3_909B0(void);
@@ -1597,16 +1600,6 @@ void fn_3_10FBE4(void) {
         g_Minigame.GameMode_MiniGame = g_d_GameSettings._33;
         fn_3_1658F0();
         g_Minigame._19DF = 0x1E;
-#ifdef TARGET_PC
-        {
-            extern s32 port_career_training_active(void);
-            if (port_career_training_active()) {
-                // Career training: no character select (your player is set); straight to the setup
-                // of the players (status 0x25: fn_3_10F684, the Flower level) and the minigame.
-                g_Minigame._19DF = 0x25;
-            }
-        }
-#endif
         fn_3_5A6D4(0x1B);
     } else {
         fn_3_5A6D4(0x1B);
@@ -1693,8 +1686,6 @@ void fn_3_10F684(void) {
 #ifdef TARGET_PC
     {
         extern s32 port_career_training_active(void);
-        extern void fn_3_60768(void);
-        extern u8 lbl_803C6714[];
         if (port_career_training_active()) {
             u8 c = g_d_GameSettings._36;
             g_Minigame.soloMinigameDifficulty = 1; // Career training: always the Flower level
@@ -1703,8 +1694,6 @@ void fn_3_10F684(void) {
             g_Minigame.battingHandedness[g_d_GameSettings._35] =
                 CHAR_STATS(c)->stats.FieldingArm * 2 + CHAR_STATS(c)->stats.BattingStance;
             g_Minigame.minigameControlStruct[0]._08[g_d_GameSettings._35] = 0;
-            fn_3_60768();
-            lbl_803C6714[6] = 6;
         }
     }
 #endif
@@ -2879,7 +2868,13 @@ void fn_3_10E60C(void) {
         if (g_Minigame._190A != 0) {
             fn_80050FE8(1, 1, 1, 1, 1, 0);
             for (i = 0; i < 0x36; i++) {
+#ifdef TARGET_PC
+                // Career training: only your player is offered (and picked for you, below).
+                if (port_career_training_active() ? i != g_d_GameSettings._36
+                                                  : (s32)starMissionCompletionTracker[i]._31 != 1) {
+#else
                 if ((s32)starMissionCompletionTracker[i]._31 != 1) {
+#endif
                     fn_8004FDA0(i);
                 }
             }
@@ -3399,8 +3394,13 @@ void fn_3_10CC20(void) {
                     }
                 }
             } else {
+#ifdef TARGET_PC
+                if (((pad->newButtonInput & 0x100) || (port_career_training_active() && i == port)) &&
+                    g_Minigame._19E8[i]._0 >= 0 && g_GameLogic.FrameCountOfCurrentAtBat_Copy > 0x1E) {
+#else
                 if ((pad->newButtonInput & 0x100) && g_Minigame._19E8[i]._0 >= 0 &&
                     g_GameLogic.FrameCountOfCurrentAtBat_Copy > 0x1E) {
+#endif
                     if (g_Minigame._19E8[i]._6 != 0) {
                         sndFXStartEx(0x1BA, lbl_800EFBA4[3], 0x3F, 0);
                         goto browse;
@@ -3748,8 +3748,17 @@ void fn_3_10CC20(void) {
                 satIncU16((u16*)&g_Minigame._19D2[i]);
             }
         }
+#ifdef TARGET_PC
+        if (port_career_training_active()) {
+            g_Minigame._19E4 = 1; // Career training: the Flower level
+        }
+#endif
         if (g_GameLogic.FrameCountOfCurrentAtBat_Copy > 0x1E) {
+#ifdef TARGET_PC
+            if ((pad->newButtonInput & 0x100) || port_career_training_active()) {
+#else
             if (pad->newButtonInput & 0x100) {
+#endif
                 g_Minigame._19DE = 6;
                 g_Minigame.soloMinigameDifficulty = (u8)g_Minigame._19E4;
                 g_GameLogic.FrameCountOfCurrentAtBat_Copy = 0;
