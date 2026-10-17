@@ -1178,6 +1178,25 @@ static s32 chapter_points(f32 iwar) {
     return 0;
 }
 
+// Attribute points come only from the tryout and the four regular-season chapters, scaled to your
+// body: a perfect run (the top tier every time) takes the body's bars to 10 in all four.
+//   need = 40 - the body's bar total; the tryout pays up to a fifth of it, each chapter an equal
+//   share of the rest (rounded up). The postseason pays none: it's for recruits and the Cup.
+static s32 points_need(void) {
+    s32 n = 40 - bar_sum(sCareer.body);
+    return n < 4 ? 4 : n;
+}
+static s32 tryout_max(void) {
+    return (points_need() + 2) / 5;
+}
+static s32 chapter_max(void) {
+    return (points_need() - tryout_max() + 3) / 4;
+}
+// `tier` of `tiers` (0 = nothing) as a share of `max`, rounded.
+static s32 tier_points(s32 tier, s32 tiers, s32 max) {
+    return (tier * max + tiers / 2) / tiers;
+}
+
 // Highest recruit tier a chapter's tWAR earns: 3 sub-captain, 2 unique player, 1 generic, 0 none.
 static s32 recruit_tier_num(f32 twar) {
     if (twar >= 9.0f) return 3;
@@ -1312,7 +1331,7 @@ void port_career_game_final(void) {
 
     if (sCareer.stage == STAGE_PROLOGUE) {
         f32 total = g.iwar + g.twar;
-        s32 pts = g.iwar >= 7.0f ? 2 : (g.iwar >= 3.0f ? 1 : 0);
+        s32 pts = tier_points(g.iwar >= 7.0f ? 2 : (g.iwar >= 3.0f ? 1 : 0), 2, tryout_max());
         if (g.positives == 0) {
             sCareer.team = TEAM_DK;
             career_log("Nothing went right at the tryout. Walking home through the jungle, DK finds you.");
@@ -1342,7 +1361,7 @@ void port_career_game_final(void) {
         if (g.won == 1) sCareer.chapterWins++;
         sCareer.game++;
         if (sCareer.game >= 3) {
-            s32 pts = chapter_points(sCareer.chapterIwar);
+            s32 pts = tier_points(chapter_points(sCareer.chapterIwar), 4, chapter_max());
             sCareer.pointsEarned += pts;
             career_log("Chapter %d done vs %s: %d-%d in the series. iWAR %.2f -> %d attribute points. tWAR %.2f -> "
                        "recruit %s.",
@@ -1371,12 +1390,10 @@ void port_career_game_final(void) {
             }
         }
     } else if (sCareer.stage == STAGE_FESTIVAL) {
-        // Win: points for your game plus the talent level, and a recruit up to its best tier.
+        // Win: a recruit up to the talent level's best tier; lose: a generic one. No points.
         static const s32 kFestTier[4] = {1, 2, 3, 3};
         s32 lvl = sCareer.festLevel & 3;
-        s32 pts = chapter_points(g.iwar * 3.0f) + (g.won == 1 ? lvl : 0);
         s32 i;
-        sCareer.pointsEarned += pts;
         sCareer.recruitTier = g.won == 1 ? kFestTier[lvl] : 1;
         sCareer.recruitTeam = -1;
         sCareer.recruitPoolN = 0;
@@ -1384,9 +1401,8 @@ void port_career_game_final(void) {
             if (sCareer.festIds[i] >= 0) sCareer.recruitPool[sCareer.recruitPoolN++] = sCareer.festIds[i];
         }
         sCareer.recruitLogo = sCareer.festIds[0];
-        career_log("Star Festival (%s) %s: +%d attribute points, recruit up to tier %d from the invitees. Bowser's team "
-                   "is on its way.", sFestName[lvl], g.won == 1 ? "won" : "lost", pts, sCareer.recruitTier);
-        recap("Star Festival  +%d attribute point%s", pts, pts == 1 ? "" : "s");
+        career_log("Star Festival (%s) %s: recruit up to tier %d from the invitees. Bowser's team is on its way.",
+                   sFestName[lvl], g.won == 1 ? "won" : "lost", sCareer.recruitTier);
         sCareer.stage = STAGE_BOWSER;
     } else if (sCareer.stage == STAGE_BOWSER) {
         // Win: Hammer Bro wants in. Lose: Dry Bones does. (Another of his kind if he's already yours.)
@@ -1395,9 +1411,7 @@ void port_career_game_final(void) {
                                      CHAR_ID_DRYBONES_BLUE};
         const s32* list = g.won == 1 ? kWin : kLose;
         s32 n = g.won == 1 ? 3 : 4;
-        s32 pts = chapter_points(g.iwar * 3.0f);
         s32 i;
-        sCareer.pointsEarned += pts;
         sCareer.recruitPoolN = 0;
         for (i = 0; i < n && sCareer.recruitPoolN == 0; i++) {
             if (!on_my_team(list[i])) sCareer.recruitPool[sCareer.recruitPoolN++] = list[i];
@@ -1405,30 +1419,27 @@ void port_career_game_final(void) {
         sCareer.recruitTier = sCareer.recruitPoolN > 0 ? 1 : 0;
         sCareer.recruitTeam = TEAM_BOWSER;
         sCareer.recruitLogo = CHAR_ID_BOWSER;
-        career_log("Bowser game %s: +%d attribute points%s%s. Bowser Jr. calls it pathetic and takes the team over for "
-                   "the Kingdom Cup.", g.won == 1 ? "won" : "lost", pts,
+        career_log("Bowser game %s%s%s. Bowser Jr. calls it pathetic and takes the team over for the Kingdom Cup.",
+                   g.won == 1 ? "won" : "lost",
                    sCareer.recruitPoolN ? ", recruit available: " : "",
                    sCareer.recruitPoolN ? sCharName[sCareer.recruitPool[0]] : "");
-        recap("Bowser game  +%d attribute point%s", pts, pts == 1 ? "" : "s");
         sCareer.stage = STAGE_CUP;
         cup_start();
     } else if (sCareer.stage == STAGE_CUP) {
-        s32 pts = chapter_points(g.iwar * 3.0f);
-        sCareer.pointsEarned += pts;
         if (g.won == 1) {
             if (sCareer.cupRound == 0) {
-                career_log("Kingdom Cup quarterfinal won (+%d points). Bowser Jr. had the bye; %s beat %s.", pts,
+                career_log("Kingdom Cup quarterfinal won. Bowser Jr. had the bye; %s beat %s.",
                            sTeamName[sCareer.cupAWin],
                            sTeamName[sCareer.cupA[0] == sCareer.cupAWin ? sCareer.cupA[1] : sCareer.cupA[0]]);
                 sCareer.cupRound = 1;
             } else if (sCareer.cupRound == 1) {
-                career_log("Kingdom Cup semifinal won (+%d points). Bowser Jr. beat %s 5-2. The final is at Bowser "
-                           "Castle.", pts, sTeamName[sCareer.cupAWin]);
+                career_log("Kingdom Cup semifinal won. Bowser Jr. beat %s 5-2. The final is at Bowser Castle.",
+                           sTeamName[sCareer.cupAWin]);
                 sCareer.cupRound = 2;
             } else {
                 sCareer.champion = 1;
                 sCareer.stage = STAGE_EPILOGUE;
-                career_log("KINGDOM CUP CHAMPIONS! (+%d points) One more game: the All-Stars.", pts);
+                career_log("KINGDOM CUP CHAMPIONS! One more game: the All-Stars.");
                 recap("Kingdom Cup champions!");
             }
         } else {
@@ -2425,7 +2436,7 @@ static void draw_card(void) {
         static const char* const kTop[4] = {"Generic", "Unique player", "Sub-captain", "Sub-captain"};
         s32 lvl = sCareer.festLevel & 3;
         ui_small(LOW_X, LOW_Y + 1, 0.85f, 15, UI_GOLD, "Star Festival");
-        ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "Win: +%d points\nRecruit tier\n%s", lvl, kTop[lvl]);
+        ui_small(LOW_X, LOW_Y + 16, 0.85f, 15, UI_WHITE, "Win: recruit tier\n%s\nLose: Generic", kTop[lvl]);
     } else if (sPage == PAGE_RECRUIT) {
         if (sProspN > 0) {
             char nm[32];
