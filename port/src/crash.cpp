@@ -161,12 +161,14 @@ void port_crash_init(const char* userPath)
     if (userPath != nullptr && userPath[0] != '\0')
         snprintf(s_logPath, sizeof(s_logPath), "%s/crash.log", userPath);
 
+#if !TARGET_OS_TV // tvOS has no sigaltstack
     // Alternate stack so stack overflows can still be reported.
     static char altStack[256 * 1024];
     stack_t ss{};
     ss.ss_sp = altStack;
     ss.ss_size = sizeof(altStack);
     sigaltstack(&ss, nullptr);
+#endif
 
     struct sigaction sa{};
     sa.sa_sigaction = crash_handler;
