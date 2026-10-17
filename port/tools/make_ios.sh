@@ -16,5 +16,5 @@ cmake -S port -B build/ios -G Xcode \
     -DCMAKE_OSX_ARCHITECTURES=arm64 \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
     -DCMAKE_CONFIGURATION_TYPES=RelWithDebInfo \
-    "${TEAMARG[@]}"
+    ${TEAMARG[@]+"${TEAMARG[@]}"}
 open build/ios/mssb.xcodeproj
