@@ -139,6 +139,9 @@ int aurora_main(int argc, char** argv)
 #endif
     // The phone's accelerometer isn't a controller (it would hide the touch controls).
     SDL_SetHint("SDL_ACCELEROMETER_AS_JOYSTICK", "0");
+    // iOS: the home bar hides and edge swipes need a second swipe, so thumbs near the screen
+    // edges stay with the game's touch controls instead of the system's gestures.
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
     AuroraInfo info = aurora_initialize(argc, argv, &config);
     port_crash_init(info.userPath);
     port_touch_init();
