@@ -1924,6 +1924,13 @@ static void card_update(void) {
         frames[0] = logo_frame(sCareer.team >= 0 ? sTeamCaptain[sCareer.team] : CHAR_ID_MARIO);
         frames[1] = logo_frame(sCareer.stage == STAGE_PROLOGUE ? CHAR_ID_BOWSERJR : (opp >= 0 ? sTeamCaptain[opp] : CHAR_ID_MARIO));
     }
+    // Until the last game's ending scene has played, the card still shows the team you just played.
+    for (i = 0; i < 3; i++) {
+        u32 id = sCareer.pend[i];
+        if ((id >> 16) == SC_RESULT && (s32)(id & 0x7F) < 6) frames[1] = logo_frame(sTeamCaptain[id & 0x7F]);
+        else if ((id >> 16) == SC_BOWSER_END) frames[1] = logo_frame(CHAR_ID_BOWSER);
+        else if ((id >> 16) == SC_FEST_END && sCareer.recruitPoolN > 0) frames[1] = logo_frame(sCareer.recruitLogo);
+    }
     // Your face: the body being picked on Create Your Player.
     frames[2] = (sPage == PAGE_CREATE || sPage == PAGE_CREATE_BARS) ? sFamilies[sFam].ids[sColor] : sCareer.body;
     // Prospects: the prospect's face and his team's logo.
