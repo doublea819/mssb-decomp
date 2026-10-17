@@ -1828,6 +1828,10 @@ static s32 sProsp[9], sProspN, sProspAt;
 static s32 sRepl[8], sReplN, sReplAt;
 
 static s32 sNoFadeWait;
+static s32 sTalkBank; // bank 8 (story dialogue art): 0 not loaded, 1 loading, 2 loaded
+extern u8 lbl_2_data_1323C[]; // its disc entry (menus: rep_08E8.c)
+extern s32 fn_80035838(void* entry, u8 id);
+extern void fn_80035B50(int id);
 static s32 sCardUp, sCardKill;
 
 // --- the matchup card (the right-hand box on every page): your team's logo vs the next
@@ -2863,8 +2867,24 @@ void port_career_scene(void) {
         return;
     }
     case 1:
+        // Challenge mode's story-dialogue art (bank 8: talk windows, portraits, A prompt), for the
+        // cutscenes. Loaded while the Career menu is up, freed when it closes.
+        if (sTalkBank < 2 && fn_80035838(lbl_2_data_1323C, 8) != 0) {
+            sTalkBank = 2;
+            career_log("Story art (bank 8) loaded.");
+        } else if (sTalkBank == 0) {
+            sTalkBank = 1;
+        }
         break;
     case 2:
+        if (sTalkBank == 1) {
+            if (fn_80035838(lbl_2_data_1323C, 8) != 0) sTalkBank = 2; // finish the load first
+            return;
+        }
+        if (sTalkBank == 2) {
+            fn_80035B50(8);
+            sTalkBank = 0;
+        }
         if (++sLeaveWait < 2 || port_career_layout_up() || sCardUp) {
             return;
         }
