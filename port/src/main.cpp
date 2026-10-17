@@ -138,7 +138,7 @@ int aurora_main(int argc, char** argv)
         config.userPath = dir;
 #endif
     // The phone's accelerometer isn't a controller (it would hide the touch controls).
-    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
+    SDL_SetHint("SDL_ACCELEROMETER_AS_JOYSTICK", "0");
     AuroraInfo info = aurora_initialize(argc, argv, &config);
     port_crash_init(info.userPath);
     port_touch_init();
