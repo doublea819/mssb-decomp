@@ -1986,6 +1986,8 @@ static s32 sTalkUp, sTalkKill;
 
 // Challenge portraits: bank 8 texture of each face (anim 0x54's frames point at these).
 #define WHO_LAKITU_TEX 22
+#define TALK_ICON_X 553 // top-left of a lineup face in the portrait spot (640x448 screen)
+#define TALK_ICON_Y 72
 static const s16 kPortraitTex[][2] = {
     {CHAR_ID_MARIO, 23}, {CHAR_ID_PEACH, 24}, {CHAR_ID_WARIO, 25}, {CHAR_ID_DK, 26}, {CHAR_ID_YOSHI, 27},
     {CHAR_ID_BOWSER, 28}, {CHAR_ID_BOWSERJR, 29}, {CHAR_ID_BRO_HAMMER, 38}, {CHAR_ID_TOAD_YELLOW, 148},
@@ -2033,7 +2035,7 @@ static s32 portrait_frame(s32 tex) {
 }
 
 // --- the cutscene queue and player
-enum { CUT_AFTER_GAME = 1, CUT_AFTER_ARCHIVE };
+enum { CUT_AFTER_GAME = 1, CUT_AFTER_ARCHIVE, CUT_AFTER_HUB };
 static u32 sCutQueue[6];
 static s32 sCutQN, sCutQI;
 static s32 sCutAfter;
@@ -2158,13 +2160,13 @@ static void cut_show_line(void) {
                 face->_68 = 1; // its pop-in, to frame 0x15
                 face->flags |= 2;
             } else if (who >= 0 && who < 54) {
-                s32 bx, by, ix, iy;
-                sprite_key(base, &bx, &by);
+                // Centered where the Challenge portraits stand (right of the bubble, by its tail).
+                s32 ix, iy;
                 icon->_5C = (u32)who << 16;
                 icon->_68 = 0;
                 sprite_key(icon, &ix, &iy);
-                icon->x = (f32)(bx + 10 - ix);
-                icon->y = (f32)(by + 10 - iy);
+                icon->x = (f32)(TALK_ICON_X - ix);
+                icon->y = (f32)(TALK_ICON_Y - iy);
                 icon->flags |= 2;
             }
         }
@@ -2219,13 +2221,15 @@ static BOOL cut_next_scene(void) {
 static void begin_leave(s32 what);
 static void go_page(s32 page, s32 row);
 
-// Play Game: the waiting scenes first (the last game's, then this game's intro), then `after`.
+// Play Game: the last game's scenes, if any, play and return to the menu (an ending never runs
+// straight into the next beginning); the next press plays this game's intro, then the game.
 static void cut_play_then(s32 after) {
     s32 i;
     sCutQN = sCutQI = 0;
     for (i = 0; i < 3; i++) {
         if (sCareer.pend[i] != 0) sCutQueue[sCutQN++] = sCareer.pend[i];
     }
+    if (sCutQN > 0 && after == CUT_AFTER_GAME) after = CUT_AFTER_HUB;
     if (after == CUT_AFTER_GAME) queue_pre();
     sCutAfter = after;
     if (sCutQN == 0 || sTalkBank != 2 || !cut_next_scene()) {
@@ -2255,6 +2259,8 @@ static void cut_finish(void) {
     } else if (sCutAfter == CUT_AFTER_ARCHIVE) {
         career_archive(); // a new career: create your player
         go_page(PAGE_CREATE, 0);
+    } else {
+        sDirty = 1; // back to the menu
     }
 }
 
