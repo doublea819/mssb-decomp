@@ -837,6 +837,26 @@ static BOOL setup_game(s32 arm) {
                 if (cap1 < 0) cap1 = kStars[i];
                 else cands[nc++] = kStars[i];
             }
+            // Short of 9 (sub-captains you recruited): the best unique players, then generics.
+            {
+                s32 uniq[54];
+                s32 nu = 0;
+                s32 id;
+                s32 j;
+                for (id = 0; id < 54; id++) {
+                    if (char_tier(id) == 2 && !on_my_team(id)) uniq[nu++] = id;
+                }
+                for (i = 0; i < nu; i++) {
+                    for (j = i + 1; j < nu; j++) {
+                        if (bar_sum(uniq[j]) > bar_sum(uniq[i])) {
+                            s32 x = uniq[i];
+                            uniq[i] = uniq[j];
+                            uniq[j] = x;
+                        }
+                    }
+                }
+                for (i = 0; i < nu && nc < 16; i++) cands[nc++] = uniq[i];
+            }
             stadium = STADIUM_ID_MARIO_STADIUM;
             sHomeGame = 0;
             snprintf(sOppLabel, sizeof(sOppLabel), "the All-Stars");
