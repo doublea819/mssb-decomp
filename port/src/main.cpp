@@ -8,6 +8,7 @@
 #include "port/os.h"
 
 #include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_messagebox.h>
 
 #include <cctype>
@@ -136,6 +137,8 @@ int aurora_main(int argc, char** argv)
     if (const char* dir = getenv("MSSB_USER_DIR"); dir && dir[0])
         config.userPath = dir;
 #endif
+    // The phone's accelerometer isn't a controller (it would hide the touch controls).
+    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
     AuroraInfo info = aurora_initialize(argc, argv, &config);
     port_crash_init(info.userPath);
     port_touch_init();

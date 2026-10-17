@@ -3050,6 +3050,9 @@ static void move_row(s32 d) {
 
 // Leaves the Career menu: the layout goes first (its task frees itself on its next frame).
 static void begin_leave(s32 what) {
+    if (port_career_layout_busy()) {
+        port_career_layout_unstick(); // the next screen must not inherit a stuck busy flag
+    }
     ui_clear();
     port_career_layout_close();
     sLeave = what;

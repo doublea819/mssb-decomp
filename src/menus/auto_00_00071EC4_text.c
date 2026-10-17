@@ -2681,8 +2681,13 @@ s32 port_career_layout_busy(void) {
 
 // The busy flag stuck (an animation step that never reports done): clear it. Returns the step.
 s32 port_career_layout_unstick(void) {
+    extern u32 lbl_803C663C[4]; // how many animations are still running (fn_800626EC / fn_80062674)
     s32 step = lbl_803C66B0.step[0];
+    // The count too: left above 0 it never gets back to 0, so every later move (and the game's own
+    // screens, e.g. the lineup) would wait on the busy flag forever.
+    lbl_803C663C[0] = 0;
     lbl_803C66B0.active[0] = 0;
+    lbl_803C66B0.step[0] = 0;
     return step;
 }
 
