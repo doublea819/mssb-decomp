@@ -1083,7 +1083,9 @@ static void apply_player_ratings(CharacterStats* me) {
 // ---------------------------------------------------------------- scoring
 typedef struct GameScore {
     f32 iwar, twar;
-    s32 positives; // hits, walks, HBP, RBI, runs (prologue DK rule)
+    s32 positives; // hits, walks, HBP, RBI, runs
+    s32 hitPos;    // a positive hitting line (the tryout's team pick)
+    s32 pitPos;    // pitched, with a positive pitching line
     s32 won;       // 1 win, 0 loss, 2 tie
     s32 runsFor, runsAgainst;
 } GameScore;
@@ -1111,12 +1113,15 @@ static GameScore score_game(s32 slot) {
             bat = bat * 4.0f / (f32)b->plateAppearances; // scaled to 4 plate appearances
         }
         g.iwar = bat;
+        g.hitPos = bat > 0.0f;
         if (lbl_80353A90.mvp[0] == slot) {
             g.iwar += 1.0f;
         }
         if (p->played && p->battersFaced > 0) {
-            g.iwar += p->outsPitched * 0.33f + p->strikeouts * 0.5f + p->wins * 1.0f -
+            f32 pit = p->outsPitched * 0.33f + p->strikeouts * 0.5f + p->wins * 1.0f -
                       (p->hitsAllowed + p->walks) * 0.5f - p->homeRunsAllowed * 1.5f - p->_04 * 1.0f;
+            g.iwar += pit;
+            g.pitPos = pit > 0.0f;
         }
         g.positives = b->hits + b->walks + b->hitByPitch + b->rbi + b->runs;
         // Last game's lines (Career menu) and the season totals (regular season only).
@@ -1434,19 +1439,23 @@ void port_career_game_final(void) {
     if (sCareer.stage == STAGE_PROLOGUE) {
         f32 total = g.iwar + g.twar;
         s32 pts = tier_points(g.iwar >= 7.0f ? 2 : (g.iwar >= 3.0f ? 1 : 0), 2, tryout_max());
-        if (g.positives == 0) {
+        // Win: hit and pitched well = Mario, pitched well only = Peach, otherwise Yoshi.
+        // Loss: did anything well = Wario, nothing = DK.
+        if (g.won == 1 && g.hitPos && g.pitPos) {
+            sCareer.team = TEAM_MARIO;
+            career_log("Won, at the plate and on the mound: Mario picks you first.");
+        } else if (g.won == 1 && g.pitPos) {
+            sCareer.team = TEAM_PEACH;
+            career_log("Won on your pitching: Peach invites you to the castle team.");
+        } else if (g.won == 1) {
+            sCareer.team = TEAM_YOSHI;
+            career_log("Won: Yoshi waves you over like you were always on the team.");
+        } else if (g.hitPos || g.pitPos) {
+            sCareer.team = TEAM_WARIO;
+            career_log("Lost, but you did something: Wario signs you for the price of a coin.");
+        } else {
             sCareer.team = TEAM_DK;
             career_log("Nothing went right at the tryout. Walking home through the jungle, DK finds you.");
-        } else if (total >= 10.0f) {
-            sCareer.team = TEAM_MARIO;
-            career_log("Mario picks you first. Now every at-bat is watched.");
-        } else if (total >= 4.0f) {
-            sCareer.team = best_bar() == 3 ? TEAM_YOSHI : TEAM_PEACH;
-            career_log("%s", sCareer.team == TEAM_YOSHI ? "Yoshi waves you over like you were always on the team."
-                                                         : "Peach invites you to the castle team.");
-        } else {
-            sCareer.team = TEAM_WARIO;
-            career_log("Wario signs you for the price of a coin, and gloats about the bargain.");
         }
         sCareer.pointsEarned += pts;
         build_team_roster(sCareer.team);

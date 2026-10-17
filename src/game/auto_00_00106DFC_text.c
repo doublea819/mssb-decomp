@@ -1597,6 +1597,16 @@ void fn_3_10FBE4(void) {
         g_Minigame.GameMode_MiniGame = g_d_GameSettings._33;
         fn_3_1658F0();
         g_Minigame._19DF = 0x1E;
+#ifdef TARGET_PC
+        {
+            extern s32 port_career_training_active(void);
+            if (port_career_training_active()) {
+                // Career training: no character select (your player is set); straight to the setup
+                // of the players (status 0x25: fn_3_10F684, the Flower level) and the minigame.
+                g_Minigame._19DF = 0x25;
+            }
+        }
+#endif
         fn_3_5A6D4(0x1B);
     } else {
         fn_3_5A6D4(0x1B);
@@ -1683,8 +1693,18 @@ void fn_3_10F684(void) {
 #ifdef TARGET_PC
     {
         extern s32 port_career_training_active(void);
+        extern void fn_3_60768(void);
+        extern u8 lbl_803C6714[];
         if (port_career_training_active()) {
+            u8 c = g_d_GameSettings._36;
             g_Minigame.soloMinigameDifficulty = 1; // Career training: always the Flower level
+            // What character select would have set for your player.
+            g_Minigame._19E8[g_d_GameSettings._35]._6 = 0;
+            g_Minigame.battingHandedness[g_d_GameSettings._35] =
+                CHAR_STATS(c)->stats.FieldingArm * 2 + CHAR_STATS(c)->stats.BattingStance;
+            g_Minigame.minigameControlStruct[0]._08[g_d_GameSettings._35] = 0;
+            fn_3_60768();
+            lbl_803C6714[6] = 6;
         }
     }
 #endif
