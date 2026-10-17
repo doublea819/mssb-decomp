@@ -2990,6 +2990,11 @@ static void draw_card(void) {
         box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "%s", sName);
         box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "%s\n%s%s", sFamilies[sFam].colors[sColor],
                  sFamilies[sFam].name, sPool ? "\nPlace every point" : "");
+    } else if (sPage == PAGE_HUB && training_due() && sCareer.pend[0] == 0) {
+        // The chapter opens with its training minigame (shown once the last game's scenes have played).
+        box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "Next: Training");
+        box_text(LOW_X, LOW_Y + LOW_ROW, LOW_ROW, UI_WHITE, "%s\nFlower level\nClear it: +1 point",
+                 kTrainName[kTrainGame[career_chapter_team(sCareer.chapter)]]);
     } else if (sCareer.last[0][0]) {
         box_text(LOW_X, LOW_Y, LOW_ROW, UI_GOLD, "%s", sCareer.last[0]);
         if (sCareer.hasLast) {
