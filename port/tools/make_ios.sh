@@ -8,11 +8,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 TEAM="${1:-${MSSB_IOS_TEAM:-}}"
+TEAMARG=()
+[ -n "$TEAM" ] && TEAMARG=(-DMSSB_IOS_TEAM="$TEAM") # remembered in build/ios afterwards
 cmake -S port -B build/ios -G Xcode \
     -DCMAKE_SYSTEM_NAME=iOS \
     -DCMAKE_OSX_SYSROOT=iphoneos \
     -DCMAKE_OSX_ARCHITECTURES=arm64 \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
     -DCMAKE_CONFIGURATION_TYPES=RelWithDebInfo \
-    -DMSSB_IOS_TEAM="$TEAM"
+    "${TEAMARG[@]}"
 open build/ios/mssb.xcodeproj
